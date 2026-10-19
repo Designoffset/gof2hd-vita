@@ -127,6 +127,13 @@ static int islower_soloader(int c) { return c >= 'a' && c <= 'z'; }
 static int isxdigit_soloader(int c) { return (c >= '0' && c <= '9') || ((c | 32) >= 'a' && (c | 32) <= 'f'); }
 
 extern so_module so_mod, so_fmodex, so_fmodevent;
+volatile unsigned long long io_bytes_read = 0;
+static size_t fread_counted(void *ptr, size_t size, size_t n, FILE *f) {
+    size_t r = fread(ptr, size, n, f);
+    io_bytes_read += (unsigned long long)r * size;
+    return r;
+}
+
 extern so_default_dynlib default_dynlib[];
 extern const int default_dynlib_count;
 
@@ -316,7 +323,7 @@ so_default_dynlib default_dynlib[] = {
         { "fdopen", (uintptr_t)&fdopen },
         { "fopen", (uintptr_t)&fopen_soloader },
         { "fprintf", (uintptr_t)&fprintf },
-        { "fread", (uintptr_t)&fread },
+        { "fread", (uintptr_t)&fread_counted },
         { "free", (uintptr_t)&free },
         { "fseek", (uintptr_t)&fseek },
         { "fseeko", (uintptr_t)&fseeko },

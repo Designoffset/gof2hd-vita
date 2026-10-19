@@ -62,6 +62,37 @@ static void handle_touch();
 static void handle_buttons();
 static void handle_stick();
 
+// Watchdog: logs which startup stage the main thread is in every 5 seconds,
+// and if one stage lasts over 90 seconds it crashes on purpose so the Vita
+// writes a core dump showing where every thread is stuck.
+static volatile const char *wd_stage = "start";
+static volatile uint64_t wd_since = 0;
+static volatile unsigned int wd_frames = 0;
+extern volatile unsigned long long io_bytes_read;
+
+static void wd_set(const char *stage) {
+    wd_since = sceKernelGetProcessTimeWide();
+    wd_stage = stage;
+}
+
+static int watchdog_thread(SceSize args, void *argp) {
+    unsigned int last_frames = 0;
+    while (1) {
+        sceKernelDelayThread(5 * 1000 * 1000);
+        uint64_t now = sceKernelGetProcessTimeWide();
+        unsigned int f = wd_frames;
+        logv_info("watchdog: t=%llus stage=%s for %llus frames=%u read=%lluKB",
+                  now / 1000000, (const char *)wd_stage, (now - wd_since) / 1000000, f,
+                  io_bytes_read / 1024);
+        if (f != last_frames) { last_frames = f; continue; }
+        if (now - wd_since > 90ull * 1000000) {
+            log_info("watchdog: main thread stuck for 90s, crashing to get a core dump");
+            *(volatile int *)0 = 0xDEAD;
+        }
+    }
+    return 0;
+}
+
 static void *sym(const char *name) {
     void *s = (void *)so_symbol(&so_mod, name);
     if (!s) fatal_error("Error: symbol %s not found in the game library.", name);
@@ -70,6 +101,10 @@ static void *sym(const char *name) {
 
 int main(int argc, char* argv[]) {
     soloader_init_all();
+
+    wd_set("init");
+    SceUID wd = sceKernelCreateThread("watchdog", watchdog_thread, 0x10000100, 0x4000, 0, 0, NULL);
+    if (wd >= 0) sceKernelStartThread(wd, 0, NULL);
 
     int  (*JNI_OnLoad)(JavaVM *jvm) = sym("JNI_OnLoad");
     void (*setAPKPath)(JNIEnv *, void *, jstring) = sym(JNI_PREFIX "setAPKPath");
@@ -108,25 +143,22 @@ int main(int argc, char* argv[]) {
     // GLViewRenderer.onSurfaceCreated()
     gl_init();
 
-    // DIAGNOSTIC: 2 seconds of magenta to prove frames reach the display.
-    for (int i = 0; i < 120; i++) {
-        glDisable(GL_SCISSOR_TEST);
-        glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        gl_swap();
-    }
-    log_info("magenta test done");
+    wd_set("setEnvironmentVariables");
     setEnvironmentVariables(&jni, NULL, (jobject)0x42424242);
     log_info("setEnvironmentVariables() passed");
 
     // GLViewRenderer.onSurfaceChanged()
+    wd_set("initialize");
     initialize(&jni, NULL, SCREEN_W, SCREEN_H);
     log_info("initialize() passed");
+    wd_set("resize");
     resize(&jni, NULL, SCREEN_W, SCREEN_H);
     log_info("resize() passed");
 
     // GLViewRenderer.onDrawFrame() loop
+    wd_set("render loop");
     while (1) {
+        wd_frames++;
         handle_touch();
         if (setting_physicalControlsEnabled) {
             handle_buttons();
