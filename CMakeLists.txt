@@ -24,7 +24,7 @@ set(PSVITAIP "192.168.1.98" CACHE STRING "PSVita IP (for FTP access)")
 set(PARSECOREPATH "$ENV{PARSECOREPATH}" CACHE STRING "vita-parse-core main.py")
 
 # Game-specific definitions
-set(DATA_PATH "ux0:data/gof2/" CACHE STRING "Path to data (with trailing /)")
+set(DATA_PATH "ux0:data/gof2hd/" CACHE STRING "Path to data (with trailing /)")
 set(SO_PATH "assets/lib/libgof2hdaa.so" CACHE STRING "Path to .so")
 set(APK_PATH "${DATA_PATH}GalaxyOnFire.apk" CACHE STRING "Path to .apk")
 
