@@ -12,11 +12,11 @@
 #include <psp2/kernel/clib.h>
 #include <psp2/kernel/threadmgr.h>
 
-#define COLOR_RED     "\x1B[31m"
-#define COLOR_ORANGE  "\x1B[33m"
-#define COLOR_BLUE    "\x1B[34m"
+#define COLOR_RED ""
+#define COLOR_ORANGE ""
+#define COLOR_BLUE ""
 
-#define COLOR_END     "\033[0m"
+#define COLOR_END ""
 
 static SceKernelLwMutexWork _log_mutex;
 static volatile short int _log_mutex_inited = 0;
@@ -40,15 +40,35 @@ static char buffer_b[2048];
         sceKernelUnlockLwMutex(&_log_mutex, 1); \
     }
 
+#include <psp2/io/fcntl.h>
+#include <string.h>
+
+// Mirror everything to ux0:data/gof2hd/log.txt (capped at 4 MB).
+static SceUID _log_fd = -1;
+static unsigned int _log_written = 0;
+static void _log_file(const char *s) {
+    if (_log_fd < 0 && _log_written == 0) {
+        _log_fd = sceIoOpen(DATA_PATH "log.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+        _log_written = 1;
+    }
+    if (_log_fd < 0 || _log_written > 4 * 1024 * 1024) return;
+    unsigned int n = strlen(s);
+    sceIoWrite(_log_fd, s, n);
+    _log_written += n;
+}
+
+void loader_log_raw(const char *s) { _log_file(s); }
+
 #define LOG_PRINT \
     va_list list; \
     va_start(list, fmt); \
     sceClibVsnprintf(buffer_b, sizeof(buffer_b), buffer_a, list); \
     va_end(list); \
-    sceClibPrintf(buffer_b);
+    sceClibPrintf(buffer_b); \
+    _log_file(buffer_b);
 
 void _log_info(const char *fi, int li, const char *fn, const char* fmt, ...) {
-#ifdef DEBUG_SOLOADER
+#if 1 // always log in this build
     LOG_LOCK
 
     sceClibSnprintf(buffer_a, sizeof(buffer_a), "%s[INFO] %s%s\n",
@@ -60,7 +80,7 @@ void _log_info(const char *fi, int li, const char *fn, const char* fmt, ...) {
 }
 
 void _log_warn(const char *fi, int li, const char *fn, const char* fmt, ...) {
-#ifdef DEBUG_SOLOADER
+#if 1 // always log in this build
     LOG_LOCK
 
     sceClibSnprintf(buffer_a, sizeof(buffer_a), "%s[WARN][%s:%d][%s] %s%s\n",
@@ -72,7 +92,7 @@ void _log_warn(const char *fi, int li, const char *fn, const char* fmt, ...) {
 }
 
 void _log_debug(const char *fi, int li, const char *fn, const char* fmt, ...) {
-#ifdef DEBUG_SOLOADER
+#if 1 // always log in this build
     LOG_LOCK
 
     sceClibSnprintf(buffer_a, sizeof(buffer_a), "[DBG][%s:%d][%s] %s\n",

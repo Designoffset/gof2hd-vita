@@ -80,6 +80,8 @@ int main(int argc, char* argv[]) {
     void (*renderstep)(JNIEnv *, void *, jlong) = sym(JNI_PREFIX "renderstep");
     int  (*getExitFlag)(JNIEnv *, void *) = sym(JNI_PREFIX "getExitFlag");
     handleTouchEvent = sym(JNI_PREFIX "handleTouchEvent");
+    int  (*getLogoShown)(JNIEnv *, void *) = sym(JNI_PREFIX "getLogoShown");
+    int  (*isInMainMenu)(JNIEnv *, void *) = sym(JNI_PREFIX "isInMainMenu");
 
     JNI_OnLoad(&jvm);
     log_info("JNI_OnLoad() passed");
@@ -112,8 +114,18 @@ int main(int argc, char* argv[]) {
             handle_stick();
         }
 
-        renderstep(&jni, NULL, (jlong)(sceKernelGetProcessTimeWide() / 1000));
+        uint64_t t0 = sceKernelGetProcessTimeWide();
+        renderstep(&jni, NULL, (jlong)(t0 / 1000));
         gl_swap();
+
+        // Heartbeat for debugging: once a second for the first minute, then every 10s.
+        static unsigned int frame = 0;
+        frame++;
+        if ((frame <= 3600 && frame % 60 == 0) || frame % 600 == 0 || frame <= 3) {
+            logv_info("heartbeat frame=%u logoShown=%d mainMenu=%d inSpace=%d renderstep=%llums",
+                      frame, getLogoShown(&jni, NULL), isInMainMenu(&jni, NULL), controls_in_space(),
+                      (sceKernelGetProcessTimeWide() - t0) / 1000);
+        }
 
         if (getExitFlag(&jni, NULL))
             sceKernelExitProcess(0);

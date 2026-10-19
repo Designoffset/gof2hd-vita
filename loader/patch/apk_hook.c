@@ -214,6 +214,8 @@ static int zip_name_locate_retry(void *za, const char *fname, int flags, void *e
             if (r >= 0) return r;
         }
     }
+    static int misses = 0;
+    if (misses++ < 200) logv_info("archive: not found: %s", fname);
     return idx;
 }
 

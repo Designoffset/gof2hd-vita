@@ -187,7 +187,9 @@ static GLuint realize(proxy_shader *p, int use_cg) {
         GLint ok = GL_FALSE;
         glGetShaderiv(r, GL_COMPILE_STATUS, &ok);
         if (!ok) {
-            shader_log("GLSL FAILED %s\n", p->name, "");
+            char info[1024] = "";
+            glGetShaderInfoLog(r, sizeof(info), NULL, info);
+            shader_log("GLSL FAILED %s\n%s\n", p->name, info);
             glDeleteShader(r);
             return 0;
         }
