@@ -34,6 +34,9 @@ void gl_preload() {
 
 void gl_init() {
     vglInitExtended(0, 960, 544, 6 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
+    // Translate+compile GLSL in glCompileShader so failures are reported
+    // there; POSTPONED mode compiles inside glLinkProgram and crashes on failure.
+    vglSetSemanticBindingMode(VGL_MODE_GLOBAL);
 }
 
 void gl_swap() {
@@ -180,7 +183,14 @@ static GLuint realize(proxy_shader *p, int use_cg) {
         GLuint r = glCreateShader(p->type);
         const GLchar *src = p->glsl;
         glShaderSource(r, 1, &src, NULL);
-        glCompileShader(r); // translated at link time
+        glCompileShader(r);
+        GLint ok = GL_FALSE;
+        glGetShaderiv(r, GL_COMPILE_STATUS, &ok);
+        if (!ok) {
+            shader_log("GLSL FAILED %s\n", p->name, "");
+            glDeleteShader(r);
+            return 0;
+        }
         return p->real_glsl = r;
     }
 }
@@ -198,24 +208,6 @@ static GLuint placeholder(GLenum type) {
     glShaderSource(*slot, 1, &src, NULL);
     glCompileShader(*slot);
     return *slot;
-}
-
-// Test-translate a GLSL shader on its own (vitaGL's GLOBAL mode compiles at
-// glCompileShader and reports failure instead of crashing at link time).
-static int glsl_compiles(proxy_shader *p) {
-    if (p->glsl_checked) return p->glsl_checked > 0;
-    vglSetSemanticBindingMode(VGL_MODE_GLOBAL);
-    GLuint t = glCreateShader(p->type);
-    const GLchar *src = p->glsl;
-    glShaderSource(t, 1, &src, NULL);
-    glCompileShader(t);
-    GLint ok = GL_FALSE;
-    glGetShaderiv(t, GL_COMPILE_STATUS, &ok);
-    glDeleteShader(t);
-    vglSetSemanticBindingMode(VGL_MODE_POSTPONED);
-    p->glsl_checked = ok ? 1 : -1;
-    if (!ok) shader_log("GLSL FAILED %s\n", p->name, "");
-    return ok;
 }
 
 void glAttachShaderHook(GLuint program, GLuint shader) {
@@ -240,9 +232,9 @@ void glLinkProgramHook(GLuint program) {
         rf = realize(fs, 1);
     }
     if (!rv || !rf) {
-        if (glsl_compiles(vs) && glsl_compiles(fs)) {
-            rv = realize(vs, 0);
-            rf = realize(fs, 0);
+        rv = realize(vs, 0);
+        rf = realize(fs, 0);
+        if (rv && rf) {
             shader_log("GLSL pair %s + %s\n", vs->name, fs->name);
         } else {
             // Linking a pair vitaGL can't translate crashes inside vitaGL,
