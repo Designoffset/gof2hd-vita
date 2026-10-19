@@ -61,6 +61,7 @@ typedef struct {
     GLchar *cg;       // hand-written Cg, or NULL
     GLuint real_cg;   // compiled lazily
     GLuint real_glsl;
+    int glsl_checked; // 0 = untested, 1 = compiles, -1 = fails
 } proxy_shader;
 
 static proxy_shader proxies[MAX_SHADERS];
@@ -140,6 +141,16 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string,
     char cg_path[128];
     snprintf(cg_path, sizeof(cg_path), "%s/%s.cg", GXP_PATH, p->name);
     p->cg = read_text(cg_path);
+
+    // Rewritten GLSL for shaders vitaGL's translator can't take as-is
+    // (e.g. varying arrays flattened into separate varyings).
+    char glsl_path[128];
+    snprintf(glsl_path, sizeof(glsl_path), "app0:glsl/%s.glsl", p->name);
+    GLchar *fixed = read_text(glsl_path);
+    if (fixed) {
+        free(p->glsl);
+        p->glsl = fixed;
+    }
 }
 
 void glCompileShaderHook(GLuint shader) {
@@ -174,6 +185,39 @@ static GLuint realize(proxy_shader *p, int use_cg) {
     }
 }
 
+static GLuint placeholder(GLenum type) {
+    static GLuint pv = 0, pf = 0;
+    GLuint *slot = (type == GL_VERTEX_SHADER) ? &pv : &pf;
+    if (*slot) return *slot;
+    const GLchar *src = (type == GL_VERTEX_SHADER)
+        ? "uniform float4x4 u_ModelViewProjectionMatrix;\n"
+          "void main(float4 a_position, float4 out gl_Position : POSITION) {\n"
+          "  gl_Position = mul(a_position, u_ModelViewProjectionMatrix);\n}\n"
+        : "float4 main() : COLOR { return float4(1.0, 0.0, 1.0, 1.0); }\n";
+    *slot = glCreateShader(type == GL_VERTEX_SHADER ? GL_CG_VERTEX_SHADER_EXT : GL_CG_FRAGMENT_SHADER_EXT);
+    glShaderSource(*slot, 1, &src, NULL);
+    glCompileShader(*slot);
+    return *slot;
+}
+
+// Test-translate a GLSL shader on its own (vitaGL's GLOBAL mode compiles at
+// glCompileShader and reports failure instead of crashing at link time).
+static int glsl_compiles(proxy_shader *p) {
+    if (p->glsl_checked) return p->glsl_checked > 0;
+    vglSetSemanticBindingMode(VGL_MODE_GLOBAL);
+    GLuint t = glCreateShader(p->type);
+    const GLchar *src = p->glsl;
+    glShaderSource(t, 1, &src, NULL);
+    glCompileShader(t);
+    GLint ok = GL_FALSE;
+    glGetShaderiv(t, GL_COMPILE_STATUS, &ok);
+    glDeleteShader(t);
+    vglSetSemanticBindingMode(VGL_MODE_POSTPONED);
+    p->glsl_checked = ok ? 1 : -1;
+    if (!ok) shader_log("GLSL FAILED %s\n", p->name, "");
+    return ok;
+}
+
 void glAttachShaderHook(GLuint program, GLuint shader) {
     proxy_shader *p = proxy(shader);
     if (!p || program >= MAX_PROGRAMS) return;
@@ -196,9 +240,17 @@ void glLinkProgramHook(GLuint program) {
         rf = realize(fs, 1);
     }
     if (!rv || !rf) {
-        rv = realize(vs, 0);
-        rf = realize(fs, 0);
-        shader_log("GLSL pair %s + %s\n", vs->name, fs->name);
+        if (glsl_compiles(vs) && glsl_compiles(fs)) {
+            rv = realize(vs, 0);
+            rf = realize(fs, 0);
+            shader_log("GLSL pair %s + %s\n", vs->name, fs->name);
+        } else {
+            // Linking a pair vitaGL can't translate crashes inside vitaGL,
+            // so link a placeholder instead (renders pink).
+            shader_log("PLACEHOLDER for %s + %s\n", vs->name, fs->name);
+            rv = placeholder(GL_VERTEX_SHADER);
+            rf = placeholder(GL_FRAGMENT_SHADER);
+        }
     }
 
     glAttachShader(program, rv);
