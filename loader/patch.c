@@ -24,6 +24,7 @@ extern so_module so_mod;
 
 void so_patch(void) {
     patch__screen_fix();
+    patch__retina();
     patch__quit_fix();
     patch__controls_fix();
     patch__apk_hook();
