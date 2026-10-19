@@ -18,6 +18,7 @@
 
 #include "utils/init.h"
 #include "utils/glutil.h"
+#include <vitaGL.h>
 #include "utils/logger.h"
 #include "utils/settings.h"
 #include "utils/dialog.h"
@@ -106,6 +107,15 @@ int main(int argc, char* argv[]) {
 
     // GLViewRenderer.onSurfaceCreated()
     gl_init();
+
+    // DIAGNOSTIC: 2 seconds of magenta to prove frames reach the display.
+    for (int i = 0; i < 120; i++) {
+        glDisable(GL_SCISSOR_TEST);
+        glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        gl_swap();
+    }
+    log_info("magenta test done");
     setEnvironmentVariables(&jni, NULL, (jobject)0x42424242);
     log_info("setEnvironmentVariables() passed");
 

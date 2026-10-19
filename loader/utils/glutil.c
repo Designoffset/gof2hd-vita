@@ -312,7 +312,10 @@ void glBindFramebufferHook(GLenum target, GLuint fb) {
 void glClearHook(GLbitfield mask) {
     st_clears++;
     if (mask & GL_COLOR_BUFFER_BIT) glClearColor(0.0f, 0.3f, 1.0f, 1.0f);
+    GLboolean sc = glIsEnabled(GL_SCISSOR_TEST);
+    if (sc) glDisable(GL_SCISSOR_TEST);
     glClear(mask);
+    if (sc) glEnable(GL_SCISSOR_TEST);
 }
 
 void gl_stats_reset(void) { st_draws = st_draws_fb0 = st_clears = st_fbbinds = 0; }
@@ -320,6 +323,11 @@ void gl_stats_reset(void) { st_draws = st_draws_fb0 = st_clears = st_fbbinds = 0
 // Called once per heartbeat from main.c: per-frame averages since last call.
 void gl_stats_report(void) {
     GLenum err = glGetError();
+    GLint box[4] = {0, 0, 0, 0};
+    glGetIntegerv(GL_SCISSOR_BOX, box);
+    logv_info("  gl: scissor=%d box=%d,%d %dx%d depthTest=%d blend=%d cull=%d",
+              glIsEnabled(GL_SCISSOR_TEST), box[0], box[1], box[2], box[3],
+              glIsEnabled(GL_DEPTH_TEST), glIsEnabled(GL_BLEND), glIsEnabled(GL_CULL_FACE));
     logv_info("  gl: draws=%u (to screen %u) clears=%u fbbinds=%u fb=%u viewport=%d,%d %dx%d err=0x%x",
               st_draws, st_draws_fb0, st_clears, st_fbbinds, cur_fb,
               last_vp[0], last_vp[1], last_vp[2], last_vp[3], err);
