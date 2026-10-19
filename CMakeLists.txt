@@ -13,8 +13,8 @@ project(so_loader C CXX)
 include("${VITASDK}/share/vita.cmake" REQUIRED)
 
 # Vita application configuration
-set(VITA_APP_NAME "Galaxy on Fire 2")
-set(VITA_TITLEID "GALAXYOF2")
+set(VITA_APP_NAME "Galaxy on Fire 2 HD")
+set(VITA_TITLEID "GOF2HD012")
 set(VITA_VPKNAME "GalaxyOnFire2")
 set(VITA_VERSION "01.00")
 set(VITA_MKSFOEX_FLAGS "-d ATTRIBUTE2=12")
@@ -25,7 +25,7 @@ set(PARSECOREPATH "$ENV{PARSECOREPATH}" CACHE STRING "vita-parse-core main.py")
 
 # Game-specific definitions
 set(DATA_PATH "ux0:data/gof2/" CACHE STRING "Path to data (with trailing /)")
-set(SO_PATH "lib/armeabi/libgof2.so" CACHE STRING "Path to .so")
+set(SO_PATH "assets/lib/libgof2hdaa.so" CACHE STRING "Path to .so")
 set(APK_PATH "${DATA_PATH}GalaxyOnFire.apk" CACHE STRING "Path to .apk")
 
 add_definitions(-DDATA_PATH="${DATA_PATH}"
@@ -41,7 +41,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_definitions(-DDEBUG_SOLOADER)
 endif()
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-q -O3 -g -ffast-math -mfloat-abi=softfp")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-q -Wl,--allow-multiple-definition -O3 -g -ffast-math -mfloat-abi=softfp")
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -std=gnu++20 -Wno-write-strings -Wno-psabi")
 
 add_executable(${CMAKE_PROJECT_NAME}
@@ -97,13 +97,16 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       taihen_stub
                       SceShaccCg_stub
                       OpenSLES
-                      OpenAL
+                      openal
                       sndfile
                       vorbis
                       ogg
                       vorbisenc
                       vorbisfile
                       FLAC
+                      opus
+                      mp3lame
+                      mpg123
                       z
                       m
                       ScePgf_stub
@@ -153,6 +156,7 @@ target_link_libraries(configurator
                       SceGxm_stub
                       SceShaccCg_stub
                       SceSysmodule_stub
+                      SceAppUtil_stub
                       SceTouch_stub
                       SceVshBridge_stub
                       )
@@ -168,11 +172,11 @@ vita_create_vpk(${VITA_VPKNAME}.vpk ${VITA_TITLEID} eboot.bin
                 ${CMAKE_SOURCE_DIR}/livearea/mkktbkkt.png sce_sys/livearea/contents/mkktbkkt.png
                 ${CMAKE_SOURCE_DIR}/livearea/bg0.png sce_sys/livearea/contents/bg0.png
                 ${CMAKE_SOURCE_DIR}/livearea/template.xml sce_sys/livearea/contents/template.xml
-                ${CMAKE_SOURCE_DIR}/shaders/gxp shaders
+                ${CMAKE_SOURCE_DIR}/shaders/cg shaders
                 ${CMAKE_SOURCE_DIR}/loader/configurator/configurator-bg.png configurator-bg.png
                 ${CMAKE_SOURCE_DIR}/loader/configurator/SourceSansPro-Regular.ttf SourceSansPro-Regular.ttf
                 ${CMAKE_BINARY_DIR}/configurator.bin configurator.bin
-                ${CMAKE_SOURCE_DIR}/patch patch
+                
                 )
 
 add_custom_target(send

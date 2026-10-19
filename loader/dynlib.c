@@ -115,6 +115,95 @@ EGLBoolean eglSwapBuffers_wrapper(EGLDisplay display, EGLSurface surface) {
     return eglSwapBuffers(display, surface);
 }
 
+
+// ---- Additions for the GOF2 HD 2012 build (three .so modules + FMOD) ----
+#include <pthread.h>
+#include <ctype.h>
+#include "utils/logger.h"
+#include "utils/dialog.h"
+#include <SLES/OpenSLES_Android.h>
+
+static int islower_soloader(int c) { return c >= 'a' && c <= 'z'; }
+static int isxdigit_soloader(int c) { return (c >= '0' && c <= '9') || ((c | 32) >= 'a' && (c | 32) <= 'f'); }
+
+extern so_module so_mod, so_fmodex, so_fmodevent;
+extern so_default_dynlib default_dynlib[];
+extern const int default_dynlib_count;
+
+void __assert2_soloader(const char *file, int line, const char *func, const char *expr) {
+    fatal_error("Assertion failed: %s (%s:%d %s)", expr, file, line, func);
+}
+
+static int ret_minus1() { return -1; }
+static void *ret_null() { return NULL; }
+
+// FMOD dlopen()s libOpenSLES.so and dlsym()s slCreateEngine / SL_IID_*.
+void *dlopen_soloader(const char *filename, int flag) {
+    logv_info("dlopen(%s)", filename ? filename : "(null)");
+    return (void *)0x1;
+}
+int dlclose_soloader(void *handle) { return 0; }
+const char *dlerror_soloader(void) { return NULL; }
+void *dlsym_soloader(void *handle, const char *symbol) {
+    for (int i = 0; i < default_dynlib_count; i++) {
+        if (strcmp(symbol, default_dynlib[i].symbol) == 0)
+            return (void *)default_dynlib[i].func;
+    }
+    uintptr_t s;
+    if ((s = so_symbol(&so_fmodex, symbol))) return (void *)s;
+    if ((s = so_symbol(&so_fmodevent, symbol))) return (void *)s;
+    if ((s = so_symbol(&so_mod, symbol))) return (void *)s;
+    logv_error("dlsym(%s): not found", symbol);
+    return NULL;
+}
+
+// Bionic's pthread_once_t is a plain int (PTHREAD_ONCE_INIT == 0).
+static pthread_mutex_t once_lock = PTHREAD_MUTEX_INITIALIZER;
+int pthread_once_soloader(volatile int *once, void (*fn)(void)) {
+    if (*once) return 0;
+    pthread_mutex_lock(&once_lock);
+    if (!*once) {
+        *once = 1;
+        pthread_mutex_unlock(&once_lock);
+        fn();
+        return 0;
+    }
+    pthread_mutex_unlock(&once_lock);
+    return 0;
+}
+// Bionic's pthread_key_t is an int; newlib's is a pointer. Both are 4 bytes.
+int pthread_key_create_soloader(int *key, void (*dtor)(void *)) {
+    return pthread_key_create((pthread_key_t *)key, dtor);
+}
+void *pthread_getspecific_soloader(int key) { return pthread_getspecific((pthread_key_t)key); }
+int pthread_setspecific_soloader(int key, const void *v) { return pthread_setspecific((pthread_key_t)key, v); }
+
+// Only used for C++ exception unwinding through the Android code.
+void *__gnu_Unwind_Find_exidx_soloader(void *pc, int *count) { *count = 0; return NULL; }
+
+int __android_log_write_soloader(int prio, const char *tag, const char *text) {
+    logv_debug("[%s] %s", tag ? tag : "", text ? text : "");
+    return 0;
+}
+
+extern void __aeabi_memclr(void *, size_t);
+extern void __aeabi_memclr4(void *, size_t);
+extern void __aeabi_memclr8(void *, size_t);
+extern void __aeabi_memcpy(void *, const void *, size_t);
+extern void __aeabi_memcpy4(void *, const void *, size_t);
+extern void __aeabi_memcpy8(void *, const void *, size_t);
+extern void __aeabi_memmove(void *, const void *, size_t);
+extern void __aeabi_memmove4(void *, const void *, size_t);
+extern void __aeabi_memset4(void *, size_t, int);
+extern int __cxa_atexit(void (*)(void *), void *, void *);
+extern void __cxa_finalize(void *);
+extern void *__cxa_begin_cleanup;
+extern void *__cxa_call_unexpected;
+extern void *__cxa_type_match;
+extern void *memmem(const void *, size_t, const void *, size_t);
+extern void *memalign(size_t, size_t);
+extern int utime(const char *, const void *);
+
 so_default_dynlib default_dynlib[] = {
         { "AConfiguration_delete", (uintptr_t)&AConfiguration_delete },
         { "AConfiguration_fromAssetManager", (uintptr_t)&AConfiguration_fromAssetManager },
@@ -245,7 +334,7 @@ so_default_dynlib default_dynlib[] = {
         { "glBufferData", (uintptr_t)&glBufferData },
         { "glClear", (uintptr_t)&glClear },
         { "glClearColor", (uintptr_t)&glClearColor },
-        { "glCompileShader", (uintptr_t)&ret0 },
+        { "glCompileShader", (uintptr_t)&glCompileShader },
         { "glCompressedTexImage2D", (uintptr_t)&glCompressedTexImage2D },
         { "glCreateProgram", (uintptr_t)&glCreateProgram },
         { "glCreateShader", (uintptr_t)&glCreateShader },
@@ -336,7 +425,117 @@ so_default_dynlib default_dynlib[] = {
         { "time", (uintptr_t)&time },
         { "umask", (uintptr_t)&ret0 },
         { "usleep", (uintptr_t)&usleep },
+        // ---- GOF2 HD 2012 additions ----
+        { "__aeabi_memclr", (uintptr_t)&__aeabi_memclr },
+        { "__aeabi_memclr4", (uintptr_t)&__aeabi_memclr4 },
+        { "__aeabi_memclr8", (uintptr_t)&__aeabi_memclr8 },
+        { "__aeabi_memcpy", (uintptr_t)&__aeabi_memcpy },
+        { "__aeabi_memcpy4", (uintptr_t)&__aeabi_memcpy4 },
+        { "__aeabi_memcpy8", (uintptr_t)&__aeabi_memcpy8 },
+        { "__aeabi_memmove", (uintptr_t)&__aeabi_memmove },
+        { "__aeabi_memmove4", (uintptr_t)&__aeabi_memmove4 },
+        { "__aeabi_memset4", (uintptr_t)&__aeabi_memset4 },
+        { "__android_log_write", (uintptr_t)&__android_log_write_soloader },
+        { "__cxa_atexit", (uintptr_t)&__cxa_atexit },
+        { "__cxa_finalize", (uintptr_t)&__cxa_finalize },
+        { "__cxa_begin_cleanup", (uintptr_t)&__cxa_begin_cleanup },
+        { "__cxa_call_unexpected", (uintptr_t)&__cxa_call_unexpected },
+        { "__cxa_type_match", (uintptr_t)&__cxa_type_match },
+        { "__gnu_Unwind_Find_exidx", (uintptr_t)&__gnu_Unwind_Find_exidx_soloader },
+        { "__assert2", (uintptr_t)&__assert2_soloader },
+        { "dlopen", (uintptr_t)&dlopen_soloader },
+        { "dlsym", (uintptr_t)&dlsym_soloader },
+        { "dlclose", (uintptr_t)&dlclose_soloader },
+        { "dlerror", (uintptr_t)&dlerror_soloader },
+        { "acosf", (uintptr_t)&acosf },
+        { "atan2", (uintptr_t)&atan2 },
+        { "atanf", (uintptr_t)&atanf },
+        { "exp", (uintptr_t)&exp },
+        { "floor", (uintptr_t)&floor },
+        { "frexp", (uintptr_t)&frexp },
+        { "ldexp", (uintptr_t)&ldexp },
+        { "log", (uintptr_t)&log },
+        { "log10", (uintptr_t)&log10 },
+        { "log10f", (uintptr_t)&log10f },
+        { "lrintf", (uintptr_t)&lrintf },
+        { "powf", (uintptr_t)&powf },
+        { "rint", (uintptr_t)&rint },
+        { "tan", (uintptr_t)&tan },
+        { "lrand48", (uintptr_t)&lrand48 },
+        { "srand48", (uintptr_t)&srand48 },
+        { "islower", (uintptr_t)&islower_soloader },
+        { "isxdigit", (uintptr_t)&isxdigit_soloader },
+        { "fcntl", (uintptr_t)&fcntl_soloader },
+        { "read", (uintptr_t)&read_soloader },
+        { "ferror", (uintptr_t)&ferror },
+        { "fileno", (uintptr_t)&fileno },
+        { "fputc", (uintptr_t)&fputc },
+        { "putc", (uintptr_t)&putc },
+        { "puts", (uintptr_t)&puts },
+        { "printf", (uintptr_t)&printf },
+        { "vfprintf", (uintptr_t)&vfprintf },
+        { "vsnprintf", (uintptr_t)&vsnprintf },
+        { "vasprintf", (uintptr_t)&vasprintf },
+        { "strcat", (uintptr_t)&strcat },
+        { "strncasecmp", (uintptr_t)&strncasecmp },
+        { "strncpy", (uintptr_t)&strncpy },
+        { "strtol", (uintptr_t)&strtol },
+        { "memmem", (uintptr_t)&memmem },
+        { "memalign", (uintptr_t)&memalign },
+        { "unlink", (uintptr_t)&unlink },
+        { "utime", (uintptr_t)&ret0 },
+        { "chown", (uintptr_t)&ret0 },
+        { "raise", (uintptr_t)&ret0 },
+        { "pthread_attr_destroy", (uintptr_t)&pthread_attr_destroy_soloader },
+        { "pthread_attr_setstacksize", (uintptr_t)&pthread_attr_setstacksize_soloader },
+        { "pthread_mutexattr_init", (uintptr_t)&pthread_mutexattr_init_soloader },
+        { "pthread_mutexattr_settype", (uintptr_t)&pthread_mutexattr_settype_soloader },
+        { "pthread_self", (uintptr_t)&pthread_self_soloader },
+        { "pthread_once", (uintptr_t)&pthread_once_soloader },
+        { "pthread_key_create", (uintptr_t)&pthread_key_create_soloader },
+        { "pthread_getspecific", (uintptr_t)&pthread_getspecific_soloader },
+        { "pthread_setspecific", (uintptr_t)&pthread_setspecific_soloader },
+        { "sem_destroy", (uintptr_t)&sem_destroy_soloader },
+        { "sem_init", (uintptr_t)&sem_init_soloader },
+        { "sem_post", (uintptr_t)&sem_post_soloader },
+        { "sem_wait", (uintptr_t)&sem_wait_soloader },
+        // FMOD's network streaming is never used by the game; keep sockets inert.
+        { "socket", (uintptr_t)&ret_minus1 },
+        { "connect", (uintptr_t)&ret_minus1 },
+        { "bind", (uintptr_t)&ret_minus1 },
+        { "listen", (uintptr_t)&ret_minus1 },
+        { "accept", (uintptr_t)&ret_minus1 },
+        { "send", (uintptr_t)&ret_minus1 },
+        { "recv", (uintptr_t)&ret_minus1 },
+        { "select", (uintptr_t)&ret_minus1 },
+        { "setsockopt", (uintptr_t)&ret_minus1 },
+        { "gethostbyname", (uintptr_t)&ret_null },
+        { "inet_addr", (uintptr_t)&ret_minus1 },
+        // GL entry points this build uses that the Xperia build did not
+        { "glBindFramebuffer", (uintptr_t)&glBindFramebuffer },
+        { "glBindRenderbuffer", (uintptr_t)&glBindRenderbuffer },
+        { "glCheckFramebufferStatus", (uintptr_t)&glCheckFramebufferStatus },
+        { "glColorMask", (uintptr_t)&glColorMask },
+        { "glDeleteFramebuffers", (uintptr_t)&glDeleteFramebuffers },
+        { "glDeleteRenderbuffers", (uintptr_t)&glDeleteRenderbuffers },
+        { "glDepthFunc", (uintptr_t)&glDepthFunc },
+        { "glDisableVertexAttribArray", (uintptr_t)&glDisableVertexAttribArray },
+        { "glFramebufferRenderbuffer", (uintptr_t)&glFramebufferRenderbuffer },
+        { "glFramebufferTexture2D", (uintptr_t)&glFramebufferTexture2D },
+        { "glGenFramebuffers", (uintptr_t)&glGenFramebuffers },
+        { "glGenRenderbuffers", (uintptr_t)&glGenRenderbuffers },
+        { "glGenerateMipmap", (uintptr_t)&glGenerateMipmap },
+        { "glRenderbufferStorage", (uintptr_t)&glRenderbufferStorage },
+        { "glTexParameterf", (uintptr_t)&glTexParameterf },
+        { "glUniform2f", (uintptr_t)&glUniform2f },
+        { "glUniform3fv", (uintptr_t)&glUniform3fv },
+        { "glUniform4f", (uintptr_t)&glUniform4f },
+        { "SL_IID_ANDROIDSIMPLEBUFFERQUEUE", (uintptr_t)&SL_IID_ANDROIDSIMPLEBUFFERQUEUE },
+        { "SL_IID_ANDROIDCONFIGURATION", (uintptr_t)&SL_IID_ANDROIDCONFIGURATION },
+        { "SL_IID_RECORD", (uintptr_t)&SL_IID_RECORD },
 };
+
+const int default_dynlib_count = sizeof(default_dynlib) / sizeof(default_dynlib[0]);
 
 void resolve_imports(so_module* mod) {
     __sF_fake[0] = *stdin;

@@ -61,44 +61,42 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string,
 
     char* sha_name = get_string_sha1((uint8_t*)*string, length);
 
-    char gxp_path[128];
-    snprintf(gxp_path, sizeof(gxp_path), "%s/%s.gxp", GXP_PATH, sha_name);
+    // Shaders are shipped as Cg source and compiled at runtime by vitaGL through
+    // libshacccg.suprx (no offline psp2cgc available for this build).
+    char cg_path[128];
+    snprintf(cg_path, sizeof(cg_path), "%s/%s.cg", GXP_PATH, sha_name);
 
-    FILE *file = fopen(gxp_path, "rb");
+    FILE *file = fopen(cg_path, "rb");
     if (!file) {
-        logv_error("[%i] Could not find %s", count, gxp_path);
+        logv_error("[%i] Could not find %s", count, cg_path);
 
         char glsl_path[128];
-        snprintf(glsl_path, sizeof(glsl_path), "%s/%s.glsl",
-                 GLSL_PATH, sha_name);
-
-        file = fopen(glsl_path, "w");
-        if (file) {
-            fwrite(*string, 1, length, file);
-            fclose(file);
+        snprintf(glsl_path, sizeof(glsl_path), "%s%s.glsl", GLSL_PATH, sha_name);
+        FILE *dump = fopen(glsl_path, "w");
+        if (dump) {
+            fwrite(*string, 1, length, dump);
+            fclose(dump);
         }
 
-        snprintf(gxp_path, sizeof(gxp_path), "%s/%s.gxp",
+        snprintf(cg_path, sizeof(cg_path), "%s/%s.cg",
                  GXP_PATH, "35F2321364838669AF52201BB354CEA05FCF5B55");
-        file = fopen(gxp_path, "rb");
+        file = fopen(cg_path, "rb");
     }
 
     if (file) {
-        logv_info("glShaderSourceHook: loading shader %s", gxp_path);
-        size_t shaderSize;
-        void *shaderBuf;
-
+        logv_info("glShaderSourceHook: compiling shader %s", cg_path);
         fseek(file, 0, SEEK_END);
-        shaderSize = ftell(file);
+        GLint shaderSize = (GLint)ftell(file);
         fseek(file, 0, SEEK_SET);
 
-        shaderBuf = malloc(shaderSize);
+        GLchar *shaderBuf = malloc(shaderSize + 1);
         fread(shaderBuf, 1, shaderSize, file);
+        shaderBuf[shaderSize] = '\0';
         fclose(file);
 
-        glShaderBinary(1, &shader, 0, shaderBuf, (int32_t)shaderSize);
-
-        if(shaderBuf) free(shaderBuf);
+        const GLchar *src = shaderBuf;
+        glShaderSource(shader, 1, &src, &shaderSize);
+        free(shaderBuf);
     }
     free(sha_name);
 }

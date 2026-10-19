@@ -1,14 +1,22 @@
+/*
+ * patch/controls_fix.c
+ *
+ * Physical controls for the GOF2 HD 2012 Android build.
+ *
+ * Based on the gof2-vita controls patch by Volodymyr Atamanenko. That build
+ * received key events from the Xperia Play input layer; the 2012 build has no
+ * key input at all, so the loader polls the Vita's buttons itself (see main.c)
+ * and turns them into touches on the game's own HUD button positions.
+ *
+ * This software may be modified and distributed under the terms
+ * of the MIT license. See the LICENSE file for details.
+ */
+
 #include "AFakeNative/keycodes.h"
 #include "utils/settings.h"
 
 void ** Globals__appManager;
 void ** gEngine;
-int * DAT_00141064;
-int * DAT_0014106c;
-int * DAT_00141068;
-int * DAT_00141060;
-float * FLOAT_0013de38;
-float * FLOAT_0013de40;
 int* Globals__turret_view_y;
 int* Globals__turret_view_x;
 int* Globals__fire_y;
@@ -30,130 +38,54 @@ int* Globals__touch_stick_x;
 int* Globals__touch_stick_y;
 
 int (*GetCurrentApplicationModule)(void *appManager);
-
 void (*OnTouchBegin)(void * this, int x, int y, int keycode);
 void (*OnTouchEnd)(void * this, int x, int y, int keycode);
-
 void (*AddTouch)(int pointerId, int action, int x, int y);
 
-void keyPressed(int keycode) {
+// Module 2 is in-flight (space). Buttons only map to HUD touches there.
+int controls_in_space() {
+    if (!GetCurrentApplicationModule || !Globals__appManager || !*Globals__appManager)
+        return 0;
+    return GetCurrentApplicationModule(*Globals__appManager) == 2;
+}
 
-    if (GetCurrentApplicationModule(*Globals__appManager) == 2) {
-        void * appManager = *(void **)(*(void **)(gEngine) + 0x28);
-        switch(keycode) {
-            case AKEYCODE_DPAD_UP:
-                *DAT_00141064 = 1;
-                *FLOAT_0013de38 = -0.1f;
-                break;
-            case AKEYCODE_DPAD_DOWN:
-                *DAT_00141068 = 1;
-                *FLOAT_0013de38 = 0.1f;
-                break;
-            case AKEYCODE_DPAD_LEFT:
-                *DAT_00141060 = 1;
-                *FLOAT_0013de40 = 0.1f;
-                break;
-            case AKEYCODE_DPAD_RIGHT:
-                *DAT_0014106c = 1;
-                *FLOAT_0013de40 = -0.1f;
-                break;
-            case AKEYCODE_DPAD_CENTER:
-                OnTouchBegin(appManager, *Globals__fire_x, *Globals__fire_y, keycode);
-                break;
-            case AKEYCODE_BACK:
-                OnTouchBegin(appManager, *Globals__turret_view_x, *Globals__turret_view_y, keycode);
-                break;
-            case AKEYCODE_MENU:
-            case AKEYCODE_BUTTON_START:
-                OnTouchBegin(appManager, *Globals__pause_x, *Globals__pause_y, keycode);
-                break;
-            case AKEYCODE_BUTTON_X:
-                OnTouchBegin(appManager, *Globals__sec_fire_x, *Globals__sec_fire_y, keycode);
-                break;
-            case AKEYCODE_BUTTON_Y:
-                OnTouchBegin(appManager, *Globals__boost_x, *Globals__boost_y, keycode);
-                break;
-            case AKEYCODE_BUTTON_L1:
-                OnTouchBegin(appManager, *Globals__autopilot_x, *Globals__autopilot_y, keycode);
-                break;
-            case AKEYCODE_BUTTON_R1:
-                OnTouchBegin(appManager, *Globals__fast_forward_x + 2, *Globals__fast_forward_y + 2, keycode);
-                break;
-            case AKEYCODE_BUTTON_SELECT:
-                OnTouchBegin(appManager, *Globals__action_menu_x, *Globals__action_menu_y, keycode);
-                break;
-        }
+static void * app_manager() {
+    return *(void **)(*(void **)(gEngine) + 0x28);
+}
+
+static int key_position(int keycode, int *x, int *y) {
+    switch (keycode) {
+        case AKEYCODE_DPAD_CENTER:   *x = *Globals__fire_x;          *y = *Globals__fire_y; return 1;
+        case AKEYCODE_BACK:          *x = *Globals__turret_view_x;   *y = *Globals__turret_view_y; return 1;
+        case AKEYCODE_BUTTON_START:  *x = *Globals__pause_x;         *y = *Globals__pause_y; return 1;
+        case AKEYCODE_BUTTON_X:      *x = *Globals__sec_fire_x;      *y = *Globals__sec_fire_y; return 1;
+        case AKEYCODE_BUTTON_Y:      *x = *Globals__boost_x;         *y = *Globals__boost_y; return 1;
+        case AKEYCODE_BUTTON_L1:     *x = *Globals__autopilot_x;     *y = *Globals__autopilot_y; return 1;
+        case AKEYCODE_BUTTON_R1:     *x = *Globals__fast_forward_x + 2; *y = *Globals__fast_forward_y + 2; return 1;
+        case AKEYCODE_BUTTON_SELECT: *x = *Globals__action_menu_x;   *y = *Globals__action_menu_y; return 1;
+        default: return 0;
     }
 }
 
-void sendFakeTouch() {
-    if (GetCurrentApplicationModule(*Globals__appManager) == 2) {
-        void * appManager = *(void **)(*(void **)(gEngine) + 0x28);
-        OnTouchBegin(appManager, 99, 445, 0);
-        OnTouchEnd(appManager, 99, 445, 0);
-    }
+void keyPressed(int keycode) {
+    int x, y;
+    if (controls_in_space() && key_position(keycode, &x, &y))
+        OnTouchBegin(app_manager(), x, y, keycode);
 }
 
 void keyReleased(int keycode) {
-    if (GetCurrentApplicationModule(*Globals__appManager) == 2) {
-        void * appManager = *(void **)(*(void **)(gEngine) + 0x28);
-
-        switch(keycode) {
-            case AKEYCODE_BACK:
-                OnTouchEnd(appManager, *Globals__turret_view_x, *Globals__turret_view_y, keycode);
-                break;
-            case AKEYCODE_DPAD_UP:
-                *DAT_00141064 = 0;
-                *FLOAT_0013de38 = 0.5f;
-                break;
-            case AKEYCODE_DPAD_DOWN:
-                *DAT_00141068 = 0;
-                *FLOAT_0013de38 = 0.5f;
-                break;
-            case AKEYCODE_DPAD_LEFT:
-                *DAT_00141060 = 0;
-                *FLOAT_0013de40 = 0.5f;
-                break;
-            case AKEYCODE_DPAD_RIGHT:
-                *DAT_0014106c = 0;
-                *FLOAT_0013de40 = 0.5f;
-                break;
-            case AKEYCODE_DPAD_CENTER:
-                OnTouchEnd(appManager, *Globals__fire_x, *Globals__fire_y, keycode);
-                break;
-            case AKEYCODE_MENU:
-            case AKEYCODE_BUTTON_START:
-                OnTouchEnd(appManager, *Globals__pause_x, *Globals__pause_y, keycode);
-                break;
-            case AKEYCODE_BUTTON_X:
-                OnTouchEnd(appManager, *Globals__sec_fire_x, *Globals__sec_fire_y, keycode);
-                break;
-            case AKEYCODE_BUTTON_Y:
-                OnTouchEnd(appManager, *Globals__boost_x, *Globals__boost_y, keycode);
-                break;
-            case AKEYCODE_BUTTON_L1:
-                OnTouchEnd(appManager, *Globals__autopilot_x, *Globals__autopilot_y, keycode);
-                break;
-            case AKEYCODE_BUTTON_R1:
-                OnTouchEnd(appManager, *Globals__fast_forward_x + 2, *Globals__fast_forward_y + 2, keycode);
-                break;
-            case AKEYCODE_BUTTON_SELECT:
-                OnTouchEnd(appManager, *Globals__action_menu_x, *Globals__action_menu_y, keycode);
-                break;
-        }
-    }
+    int x, y;
+    if (controls_in_space() && key_position(keycode, &x, &y))
+        OnTouchEnd(app_manager(), x, y, keycode);
 }
 
-void handleTouchPadEvent(int unused, int pointerId, int action, float x, float y) {
-    if (GetCurrentApplicationModule(*Globals__appManager) == 2 && setting_physicalControlsEnabled) {
-        float uVar4 = x * (float)*Globals__smallButton_dim * 2;
-        float uVar3 = y * (float)*Globals__smallButton_dim * 2;
-
-        float fVar8 = uVar4 + ((float)*Globals__touch_stick_x - (float)*Globals__smallButton_dim);
-        float fVar7 = uVar3 + ((float)*Globals__touch_stick_y - (float)*Globals__smallButton_dim);
-
-        AddTouch(pointerId, action, (int)fVar8, (int)fVar7);
-    }
+// Left stick -> the game's on-screen steering stick. nx/ny are 0..1.
+void stickTouch(int pointerId, int action, float nx, float ny) {
+    if (!controls_in_space()) return;
+    float dim = (float)*Globals__smallButton_dim;
+    float x = nx * dim * 2 + ((float)*Globals__touch_stick_x - dim);
+    float y = ny * dim * 2 + ((float)*Globals__touch_stick_y - dim);
+    AddTouch(pointerId, action, (int)x, (int)y);
 }
 
 void patch__controls_fix() {
@@ -184,15 +116,7 @@ void patch__controls_fix() {
 
     Globals__appManager = (void *) so_symbol(&so_mod, "_ZN7Globals10appManagerE");
     gEngine = (void *) so_symbol(&so_mod, "gEngine");
-
-    DAT_00141064 = (int *)(so_mod.text_base + 0x00141064);
-    DAT_0014106c = (int *)(so_mod.text_base + 0x0014106c);
-    DAT_00141068 = (int *)(so_mod.text_base + 0x00141068);
-    DAT_00141060 = (int *)(so_mod.text_base + 0x00141060);
-    FLOAT_0013de38 = (float *)(so_mod.text_base + 0x0013de38);
-    FLOAT_0013de40 = (float *)(so_mod.text_base + 0x0013de40);
-
-    hook_addr(so_symbol(&so_mod, "ndk23_keyPressed"), (uintptr_t)keyPressed);
-    hook_addr(so_symbol(&so_mod, "ndk23_keyReleased"), (uintptr_t)keyReleased);
-    hook_addr(so_symbol(&so_mod, "ndk23_handleTouchPadEvent"), (uintptr_t)handleTouchPadEvent);
 }
+
+// Referenced by AFakeNative's controls helper; unused in the 2012 build's input path.
+void sendFakeTouch() { }

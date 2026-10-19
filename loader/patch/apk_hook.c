@@ -1,3 +1,5 @@
+#include <string.h>
+#include <stdlib.h>
 #include "utils/utils.h"
 #include "utils/logger.h"
 
