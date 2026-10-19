@@ -272,6 +272,57 @@ void glGetShaderInfoLogHook(GLuint shader, GLsizei maxLength, GLsizei *length, G
     if (infoLog && maxLength > 0) infoLog[0] = '\0';
 }
 
+// --------------------------------------------------------------- GL stats
+static unsigned int st_draws, st_draws_fb0, st_clears, st_fbbinds;
+static GLuint cur_fb = 0;
+static GLint last_vp[4] = {-1, -1, -1, -1};
+static int vp_logs = 0, fb_logs = 0;
+
+void glViewportHook(GLint x, GLint y, GLsizei w, GLsizei h) {
+    if ((x != last_vp[0] || y != last_vp[1] || w != last_vp[2] || h != last_vp[3]) && vp_logs < 40) {
+        logv_info("glViewport(%d, %d, %d, %d) fb=%u", x, y, w, h, cur_fb);
+        vp_logs++;
+    }
+    last_vp[0] = x; last_vp[1] = y; last_vp[2] = w; last_vp[3] = h;
+    glViewport(x, y, w, h);
+}
+
+void glDrawArraysHook(GLenum mode, GLint first, GLsizei count) {
+    st_draws++; if (cur_fb == 0) st_draws_fb0++;
+    glDrawArrays(mode, first, count);
+}
+
+void glDrawElementsHook(GLenum mode, GLsizei count, GLenum type, const void *indices) {
+    st_draws++; if (cur_fb == 0) st_draws_fb0++;
+    glDrawElements(mode, count, type, indices);
+}
+
+void glBindFramebufferHook(GLenum target, GLuint fb) {
+    st_fbbinds++;
+    if (fb != cur_fb && fb_logs < 40) {
+        logv_info("glBindFramebuffer(0x%x, %u)", target, fb);
+        fb_logs++;
+    }
+    cur_fb = fb;
+    glBindFramebuffer(target, fb);
+}
+
+void glClearHook(GLbitfield mask) {
+    st_clears++;
+    glClear(mask);
+}
+
+void gl_stats_reset(void) { st_draws = st_draws_fb0 = st_clears = st_fbbinds = 0; }
+
+// Called once per heartbeat from main.c: per-frame averages since last call.
+void gl_stats_report(void) {
+    GLenum err = glGetError();
+    logv_info("  gl: draws=%u (to screen %u) clears=%u fbbinds=%u fb=%u viewport=%d,%d %dx%d err=0x%x",
+              st_draws, st_draws_fb0, st_clears, st_fbbinds, cur_fb,
+              last_vp[0], last_vp[1], last_vp[2], last_vp[3], err);
+    st_draws = st_draws_fb0 = st_clears = st_fbbinds = 0;
+}
+
 EGLBoolean eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor) {
     logv_debug("eglInitialize(0x%x)", (int)dpy);
 

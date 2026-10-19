@@ -2,6 +2,8 @@
 
 so_hook setGameOrientation_hook;
 void setGameOrientation(void * this, int mode) {
+    static int logs = 0;
+    if (logs++ < 10) logv_info("SetGameOrientation(%d) -> 2", mode);
     SO_CONTINUE(void *, setGameOrientation_hook, this, 2);
 }
 

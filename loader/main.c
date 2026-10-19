@@ -135,6 +135,11 @@ int main(int argc, char* argv[]) {
                       frame, getLogoShown(&jni, NULL), isInMainMenu(&jni, NULL), controls_in_space(),
                       (sceKernelGetProcessTimeWide() - t0) / 1000);
         }
+        // GL activity for exactly one frame right after each heartbeat
+        if ((frame <= 3600 && frame % 60 == 0) || frame % 600 == 0)
+            gl_stats_reset();
+        if ((frame <= 3600 && frame % 60 == 1) || frame % 600 == 1)
+            gl_stats_report();
 
         if (getExitFlag(&jni, NULL))
             sceKernelExitProcess(0);
