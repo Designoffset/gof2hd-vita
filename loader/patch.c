@@ -27,4 +27,5 @@ void so_patch(void) {
     patch__quit_fix();
     patch__controls_fix();
     patch__apk_hook();
+    patch__apk_paths();
 }

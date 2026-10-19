@@ -21,6 +21,10 @@ void gl_init();
 void gl_swap();
 GLuint glCreateShaderHook(GLenum type);
 void glCompileShaderHook(GLuint shader);
+void glAttachShaderHook(GLuint program, GLuint shader);
+void glDeleteShaderHook(GLuint shader);
+void glGetShaderivHook(GLuint shader, GLenum pname, GLint *params);
+void glGetShaderInfoLogHook(GLuint shader, GLsizei maxLength, GLsizei *length, GLchar *infoLog);
 
 void glShaderSourceHook(GLuint shader, GLsizei count,
                         const GLchar **string, const GLint *_length);

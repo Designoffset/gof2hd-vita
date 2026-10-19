@@ -40,16 +40,27 @@ void gl_swap() {
     vglSwapBuffers(GL_FALSE);
 }
 
-#define MAX_SHADERS 1024
-static char shader_names[MAX_SHADERS][41];
+// ---------------------------------------------------------------------------
+// Shader handling for the GOF2 HD 2012 build
+//
+// vitaGL fixes a shader's language when it is created: GL_VERTEX_SHADER /
+// GL_FRAGMENT_SHADER go through its GLSL translator, GL_CG_*_SHADER_EXT are
+// compiled as Cg. We only know which one we want once we see the source
+// (hand-written Cg in app0:shaders/<sha1>.cg if we have one, otherwise the
+// game's own GLSL), so the game gets placeholder ids and the real vitaGL
+// shader is created in glShaderSource.
+// ---------------------------------------------------------------------------
+#define MAX_SHADERS 2048
 
-// Our shader sources are Cg, so create Cg shaders. Plain GL_VERTEX_SHADER /
-// GL_FRAGMENT_SHADER would send them through vitaGL's GLSL translator.
-GLuint glCreateShaderHook(GLenum type) {
-    if (type == GL_VERTEX_SHADER) type = GL_CG_VERTEX_SHADER_EXT;
-    else if (type == GL_FRAGMENT_SHADER) type = GL_CG_FRAGMENT_SHADER_EXT;
-    return glCreateShader(type);
-}
+typedef struct {
+    GLenum type;
+    GLuint real;
+    int is_cg;
+    char name[41];
+} proxy_shader;
+
+static proxy_shader proxies[MAX_SHADERS];
+static GLuint next_proxy = 1;
 
 static void shader_log(const char *fmt, const char *a, const char *b) {
     FILE *f = fopen(DATA_PATH "shader_log.txt", "a");
@@ -58,92 +69,120 @@ static void shader_log(const char *fmt, const char *a, const char *b) {
     fclose(f);
 }
 
-// Compile, and if it fails: log why, then swap in a placeholder so linking
-// does not crash and the game can keep going.
-void glCompileShaderHook(GLuint shader) {
-    glCompileShader(shader);
+static proxy_shader *proxy(GLuint id) {
+    return (id > 0 && id < MAX_SHADERS) ? &proxies[id] : NULL;
+}
 
-    GLint ok = GL_FALSE;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
-    if (ok) return;
-
-    char info[1024] = "";
-    glGetShaderInfoLog(shader, sizeof(info), NULL, info);
-    const char *name = (shader < MAX_SHADERS && shader_names[shader][0]) ? shader_names[shader] : "(unknown)";
-    shader_log("FAILED %s.cg\n%s\n\n", name, info);
-
-    GLint type = 0;
-    glGetShaderiv(shader, GL_SHADER_TYPE, &type);
-    const GLchar *fallback = (type == GL_VERTEX_SHADER)
-        ? "void main(float4 a_position, float4 out gl_Position : POSITION) { gl_Position = a_position; }"
-        : "float4 main() : COLOR { return float4(1.0, 0.0, 1.0, 1.0); }";
-    glShaderSource(shader, 1, &fallback, NULL);
-    glCompileShader(shader);
+GLuint glCreateShaderHook(GLenum type) {
+    if (next_proxy >= MAX_SHADERS) {
+        log_error("Out of shader slots");
+        return 0;
+    }
+    GLuint id = next_proxy++;
+    proxies[id].type = type;
+    proxies[id].real = 0;
+    proxies[id].is_cg = 0;
+    proxies[id].name[0] = '\0';
+    return id;
 }
 
 void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string,
                         const GLint *_length) {
-    int length;
+    proxy_shader *p = proxy(shader);
+    if (!p || !string || !*string) return;
 
-    if (!string) {
-        log_error("Shader source string is NULL");
-        return;
-    } else if (!*string) {
-        log_error("Shader source *string is NULL");
-        return;
+    int length = (_length && _length[0] >= 0) ? _length[0] : (int)strlen(string[0]);
+    char *sha_name = get_string_sha1((uint8_t *)string[0], length);
+    strncpy(p->name, sha_name, 40);
+    p->name[40] = '\0';
+    free(sha_name);
+
+    if (p->real) {
+        glDeleteShader(p->real);
+        p->real = 0;
     }
 
-    // From OGL specs: If length is NULL, each string is assumed to be null terminated.
-    if (!_length) {
-        length = (int)strlen(*string);
-    } else {
-        length = *_length;
-    }
-
-    char* sha_name = get_string_sha1((uint8_t*)*string, length);
-    if (shader < MAX_SHADERS) {
-        strncpy(shader_names[shader], sha_name, 40);
-        shader_names[shader][40] = '\0';
-    }
-
-    // Shaders are shipped as Cg source and compiled at runtime by vitaGL through
-    // libshacccg.suprx (no offline psp2cgc available for this build).
     char cg_path[128];
-    snprintf(cg_path, sizeof(cg_path), "%s/%s.cg", GXP_PATH, sha_name);
-
+    snprintf(cg_path, sizeof(cg_path), "%s/%s.cg", GXP_PATH, p->name);
     FILE *file = fopen(cg_path, "rb");
-    if (!file) {
-        logv_error("[%i] Could not find %s", count, cg_path);
-
-        char glsl_path[128];
-        snprintf(glsl_path, sizeof(glsl_path), "%s%s.glsl", GLSL_PATH, sha_name);
-        FILE *dump = fopen(glsl_path, "w");
-        if (dump) {
-            fwrite(*string, 1, length, dump);
-            fclose(dump);
-        }
-
-        snprintf(cg_path, sizeof(cg_path), "%s/%s.cg",
-                 GXP_PATH, "35F2321364838669AF52201BB354CEA05FCF5B55");
-        file = fopen(cg_path, "rb");
-    }
 
     if (file) {
-        logv_info("glShaderSourceHook: compiling shader %s", cg_path);
         fseek(file, 0, SEEK_END);
-        GLint shaderSize = (GLint)ftell(file);
+        GLint size = (GLint)ftell(file);
         fseek(file, 0, SEEK_SET);
-
-        GLchar *shaderBuf = malloc(shaderSize + 1);
-        fread(shaderBuf, 1, shaderSize, file);
-        shaderBuf[shaderSize] = '\0';
+        GLchar *buf = malloc(size + 1);
+        fread(buf, 1, size, file);
+        buf[size] = '\0';
         fclose(file);
 
-        const GLchar *src = shaderBuf;
-        glShaderSource(shader, 1, &src, &shaderSize);
-        free(shaderBuf);
+        p->is_cg = 1;
+        p->real = glCreateShader(p->type == GL_VERTEX_SHADER ? GL_CG_VERTEX_SHADER_EXT
+                                                             : GL_CG_FRAGMENT_SHADER_EXT);
+        const GLchar *src = buf;
+        glShaderSource(p->real, 1, &src, &size);
+        free(buf);
+    } else {
+        // No hand-written Cg: let vitaGL translate the game's GLSL.
+        p->is_cg = 0;
+        p->real = glCreateShader(p->type);
+        glShaderSource(p->real, count, string, _length);
     }
-    free(sha_name);
+}
+
+void glCompileShaderHook(GLuint shader) {
+    proxy_shader *p = proxy(shader);
+    if (!p || !p->real) return;
+
+    glCompileShader(p->real);
+    if (!p->is_cg) return; // GLSL is translated and compiled at link time
+
+    GLint ok = GL_FALSE;
+    glGetShaderiv(p->real, GL_COMPILE_STATUS, &ok);
+    if (ok) return;
+
+    char info[1024] = "";
+    glGetShaderInfoLog(p->real, sizeof(info), NULL, info);
+    shader_log("FAILED %s.cg\n%s\n\n", p->name, info);
+
+    // Placeholder so linking does not crash; shows up bright pink.
+    const GLchar *fallback = (p->type == GL_VERTEX_SHADER)
+        ? "void main(float4 a_position, float4 out gl_Position : POSITION) { gl_Position = a_position; }"
+        : "float4 main() : COLOR { return float4(1.0, 0.0, 1.0, 1.0); }";
+    glShaderSource(p->real, 1, &fallback, NULL);
+    glCompileShader(p->real);
+}
+
+void glAttachShaderHook(GLuint program, GLuint shader) {
+    proxy_shader *p = proxy(shader);
+    if (p && p->real) glAttachShader(program, p->real);
+}
+
+void glDeleteShaderHook(GLuint shader) {
+    proxy_shader *p = proxy(shader);
+    if (!p) return;
+    if (p->real) glDeleteShader(p->real);
+    p->real = 0;
+}
+
+void glGetShaderivHook(GLuint shader, GLenum pname, GLint *params) {
+    proxy_shader *p = proxy(shader);
+    if (!p || !params) return;
+    if (pname == GL_SHADER_TYPE) { *params = p->type; return; }
+    if (!p->real) {
+        *params = (pname == GL_COMPILE_STATUS) ? GL_TRUE : 0;
+        return;
+    }
+    glGetShaderiv(p->real, pname, params);
+}
+
+void glGetShaderInfoLogHook(GLuint shader, GLsizei maxLength, GLsizei *length, GLchar *infoLog) {
+    proxy_shader *p = proxy(shader);
+    if (p && p->real) {
+        glGetShaderInfoLog(p->real, maxLength, length, infoLog);
+    } else {
+        if (length) *length = 0;
+        if (infoLog && maxLength > 0) infoLog[0] = '\0';
+    }
 }
 
 EGLBoolean eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor) {

@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include "utils/utils.h"
@@ -188,4 +189,35 @@ void patch__apk_hook() {
     }
 
     zip_fopen_hook = hook_addr(so_symbol(&so_mod, "zip_fopen"), (uintptr_t)zip_fopen);
+}
+
+// ---------------------------------------------------------------------------
+// GOF2 HD 2012: the game asks for "data/..." paths (e.g. data/bin/systems.bin),
+// which it looks up in the archive as "assets/data/..." (or under the content
+// zip prefix "47947_GOF2CONTENT_ETC/assets/data/..."). The repacked APK stores
+// these files without the "data/" level ("assets/bin/systems.bin"), so when an
+// exact lookup fails, retry it with that level removed.
+// ---------------------------------------------------------------------------
+so_hook zip_name_locate_hook;
+
+static int zip_name_locate_retry(void *za, const char *fname, int flags, void *error) {
+    int idx = SO_CONTINUE(int, zip_name_locate_hook, za, fname, flags, error);
+    if (idx >= 0 || !fname) return idx;
+
+    static const char *prefixes[] = { "assets/data/", "47947_GOF2CONTENT_ETC/assets/data/" };
+    for (int i = 0; i < 2; i++) {
+        size_t n = strlen(prefixes[i]);
+        if (strncmp(fname, prefixes[i], n) == 0) {
+            char alt[512];
+            snprintf(alt, sizeof(alt), "assets/%s", fname + n);
+            int r = SO_CONTINUE(int, zip_name_locate_hook, za, alt, flags, error);
+            if (r >= 0) return r;
+        }
+    }
+    return idx;
+}
+
+void patch__apk_paths() {
+    uintptr_t f = so_symbol(&so_mod, "_zip_name_locate");
+    if (f) zip_name_locate_hook = hook_addr(f, (uintptr_t)zip_name_locate_retry);
 }
