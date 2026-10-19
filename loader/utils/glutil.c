@@ -44,23 +44,28 @@ void gl_swap() {
 // Shader handling for the GOF2 HD 2012 build
 //
 // vitaGL fixes a shader's language when it is created: GL_VERTEX_SHADER /
-// GL_FRAGMENT_SHADER go through its GLSL translator, GL_CG_*_SHADER_EXT are
-// compiled as Cg. We only know which one we want once we see the source
-// (hand-written Cg in app0:shaders/<sha1>.cg if we have one, otherwise the
-// game's own GLSL), so the game gets placeholder ids and the real vitaGL
-// shader is created in glShaderSource.
+// GL_FRAGMENT_SHADER go through its GLSL translator (which translates a
+// vertex+fragment pair together at link time), GL_CG_*_SHADER_EXT compile
+// as Cg. Mixing one Cg and one GLSL shader in a program breaks the
+// translator, so the language is chosen per *program* at glLinkProgram:
+// hand-written Cg for both halves when we have it, otherwise the game's own
+// GLSL for both. The game only ever sees placeholder shader ids.
 // ---------------------------------------------------------------------------
 #define MAX_SHADERS 2048
+#define MAX_PROGRAMS 2048
 
 typedef struct {
     GLenum type;
-    GLuint real;
-    int is_cg;
     char name[41];
+    GLchar *glsl;     // game's source
+    GLchar *cg;       // hand-written Cg, or NULL
+    GLuint real_cg;   // compiled lazily
+    GLuint real_glsl;
 } proxy_shader;
 
 static proxy_shader proxies[MAX_SHADERS];
 static GLuint next_proxy = 1;
+static GLuint prog_vs[MAX_PROGRAMS], prog_fs[MAX_PROGRAMS];
 
 static void shader_log(const char *fmt, const char *a, const char *b) {
     FILE *f = fopen(DATA_PATH "shader_log.txt", "a");
@@ -70,7 +75,20 @@ static void shader_log(const char *fmt, const char *a, const char *b) {
 }
 
 static proxy_shader *proxy(GLuint id) {
-    return (id > 0 && id < MAX_SHADERS) ? &proxies[id] : NULL;
+    return (id > 0 && id < next_proxy && id < MAX_SHADERS) ? &proxies[id] : NULL;
+}
+
+static GLchar *read_text(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    GLchar *buf = malloc(size + 1);
+    fread(buf, 1, size, f);
+    buf[size] = '\0';
+    fclose(f);
+    return buf;
 }
 
 GLuint glCreateShaderHook(GLenum type) {
@@ -79,11 +97,15 @@ GLuint glCreateShaderHook(GLenum type) {
         return 0;
     }
     GLuint id = next_proxy++;
+    memset(&proxies[id], 0, sizeof(proxy_shader));
     proxies[id].type = type;
-    proxies[id].real = 0;
-    proxies[id].is_cg = 0;
-    proxies[id].name[0] = '\0';
     return id;
+}
+
+static void drop_real(proxy_shader *p) {
+    if (p->real_cg) glDeleteShader(p->real_cg);
+    if (p->real_glsl) glDeleteShader(p->real_glsl);
+    p->real_cg = p->real_glsl = 0;
 }
 
 void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string,
@@ -91,98 +113,117 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string,
     proxy_shader *p = proxy(shader);
     if (!p || !string || !*string) return;
 
+    drop_real(p);
+    free(p->glsl); p->glsl = NULL;
+    free(p->cg);   p->cg = NULL;
+
+    // Keep the full GLSL source (all strings concatenated).
+    size_t total = 0;
+    for (int i = 0; i < count; i++)
+        total += (_length && _length[i] >= 0) ? (size_t)_length[i] : strlen(string[i]);
+    p->glsl = malloc(total + 1);
+    size_t off = 0;
+    for (int i = 0; i < count; i++) {
+        size_t n = (_length && _length[i] >= 0) ? (size_t)_length[i] : strlen(string[i]);
+        memcpy(p->glsl + off, string[i], n);
+        off += n;
+    }
+    p->glsl[total] = '\0';
+
+    // Cg files are named after the SHA1 of the first source string.
     int length = (_length && _length[0] >= 0) ? _length[0] : (int)strlen(string[0]);
     char *sha_name = get_string_sha1((uint8_t *)string[0], length);
     strncpy(p->name, sha_name, 40);
     p->name[40] = '\0';
     free(sha_name);
 
-    if (p->real) {
-        glDeleteShader(p->real);
-        p->real = 0;
-    }
-
     char cg_path[128];
     snprintf(cg_path, sizeof(cg_path), "%s/%s.cg", GXP_PATH, p->name);
-    FILE *file = fopen(cg_path, "rb");
-
-    if (file) {
-        fseek(file, 0, SEEK_END);
-        GLint size = (GLint)ftell(file);
-        fseek(file, 0, SEEK_SET);
-        GLchar *buf = malloc(size + 1);
-        fread(buf, 1, size, file);
-        buf[size] = '\0';
-        fclose(file);
-
-        p->is_cg = 1;
-        p->real = glCreateShader(p->type == GL_VERTEX_SHADER ? GL_CG_VERTEX_SHADER_EXT
-                                                             : GL_CG_FRAGMENT_SHADER_EXT);
-        const GLchar *src = buf;
-        glShaderSource(p->real, 1, &src, &size);
-        free(buf);
-    } else {
-        // No hand-written Cg: let vitaGL translate the game's GLSL.
-        p->is_cg = 0;
-        p->real = glCreateShader(p->type);
-        glShaderSource(p->real, count, string, _length);
-    }
+    p->cg = read_text(cg_path);
 }
 
 void glCompileShaderHook(GLuint shader) {
-    proxy_shader *p = proxy(shader);
-    if (!p || !p->real) return;
+    // Compilation happens per program in glLinkProgramHook.
+}
 
-    glCompileShader(p->real);
-    if (!p->is_cg) return; // GLSL is translated and compiled at link time
-
-    GLint ok = GL_FALSE;
-    glGetShaderiv(p->real, GL_COMPILE_STATUS, &ok);
-    if (ok) return;
-
-    char info[1024] = "";
-    glGetShaderInfoLog(p->real, sizeof(info), NULL, info);
-    shader_log("FAILED %s.cg\n%s\n\n", p->name, info);
-
-    // Placeholder so linking does not crash; shows up bright pink.
-    const GLchar *fallback = (p->type == GL_VERTEX_SHADER)
-        ? "void main(float4 a_position, float4 out gl_Position : POSITION) { gl_Position = a_position; }"
-        : "float4 main() : COLOR { return float4(1.0, 0.0, 1.0, 1.0); }";
-    glShaderSource(p->real, 1, &fallback, NULL);
-    glCompileShader(p->real);
+static GLuint realize(proxy_shader *p, int use_cg) {
+    if (use_cg) {
+        if (p->real_cg) return p->real_cg;
+        GLuint r = glCreateShader(p->type == GL_VERTEX_SHADER ? GL_CG_VERTEX_SHADER_EXT
+                                                              : GL_CG_FRAGMENT_SHADER_EXT);
+        const GLchar *src = p->cg;
+        glShaderSource(r, 1, &src, NULL);
+        glCompileShader(r);
+        GLint ok = GL_FALSE;
+        glGetShaderiv(r, GL_COMPILE_STATUS, &ok);
+        if (!ok) {
+            char info[1024] = "";
+            glGetShaderInfoLog(r, sizeof(info), NULL, info);
+            shader_log("FAILED %s.cg\n%s\n\n", p->name, info);
+            glDeleteShader(r);
+            return 0;
+        }
+        return p->real_cg = r;
+    } else {
+        if (p->real_glsl) return p->real_glsl;
+        GLuint r = glCreateShader(p->type);
+        const GLchar *src = p->glsl;
+        glShaderSource(r, 1, &src, NULL);
+        glCompileShader(r); // translated at link time
+        return p->real_glsl = r;
+    }
 }
 
 void glAttachShaderHook(GLuint program, GLuint shader) {
     proxy_shader *p = proxy(shader);
-    if (p && p->real) glAttachShader(program, p->real);
+    if (!p || program >= MAX_PROGRAMS) return;
+    if (p->type == GL_VERTEX_SHADER) prog_vs[program] = shader;
+    else prog_fs[program] = shader;
+}
+
+void glLinkProgramHook(GLuint program) {
+    if (program >= MAX_PROGRAMS) return;
+    proxy_shader *vs = proxy(prog_vs[program]);
+    proxy_shader *fs = proxy(prog_fs[program]);
+    if (!vs || !fs || !vs->glsl || !fs->glsl) {
+        logv_error("glLinkProgram(%d): missing shader", program);
+        return;
+    }
+
+    GLuint rv = 0, rf = 0;
+    if (vs->cg && fs->cg) {
+        rv = realize(vs, 1);
+        rf = realize(fs, 1);
+    }
+    if (!rv || !rf) {
+        rv = realize(vs, 0);
+        rf = realize(fs, 0);
+        shader_log("GLSL pair %s + %s\n", vs->name, fs->name);
+    }
+
+    glAttachShader(program, rv);
+    glAttachShader(program, rf);
+    glLinkProgram(program);
 }
 
 void glDeleteShaderHook(GLuint shader) {
-    proxy_shader *p = proxy(shader);
-    if (!p) return;
-    if (p->real) glDeleteShader(p->real);
-    p->real = 0;
+    // Real shaders may be shared by several programs; keep them.
 }
 
 void glGetShaderivHook(GLuint shader, GLenum pname, GLint *params) {
     proxy_shader *p = proxy(shader);
-    if (!p || !params) return;
-    if (pname == GL_SHADER_TYPE) { *params = p->type; return; }
-    if (!p->real) {
-        *params = (pname == GL_COMPILE_STATUS) ? GL_TRUE : 0;
-        return;
+    if (!params) return;
+    switch (pname) {
+        case GL_SHADER_TYPE:     *params = p ? p->type : 0; break;
+        case GL_COMPILE_STATUS:  *params = GL_TRUE; break;
+        case GL_INFO_LOG_LENGTH: *params = 0; break;
+        default:                 *params = 0; break;
     }
-    glGetShaderiv(p->real, pname, params);
 }
 
 void glGetShaderInfoLogHook(GLuint shader, GLsizei maxLength, GLsizei *length, GLchar *infoLog) {
-    proxy_shader *p = proxy(shader);
-    if (p && p->real) {
-        glGetShaderInfoLog(p->real, maxLength, length, infoLog);
-    } else {
-        if (length) *length = 0;
-        if (infoLog && maxLength > 0) infoLog[0] = '\0';
-    }
+    if (length) *length = 0;
+    if (infoLog && maxLength > 0) infoLog[0] = '\0';
 }
 
 EGLBoolean eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor) {

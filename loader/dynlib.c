@@ -362,7 +362,7 @@ so_default_dynlib default_dynlib[] = {
         { "glGetUniformLocation", (uintptr_t)&glGetUniformLocation },
         { "glHint", (uintptr_t)&glHint },
         { "glLineWidth", (uintptr_t)&glLineWidth },
-        { "glLinkProgram", (uintptr_t)&glLinkProgram },
+        { "glLinkProgram", (uintptr_t)&glLinkProgramHook },
         { "glPixelStorei", (uintptr_t)&ret0 },
         { "glScissor", (uintptr_t)&glScissor },
         { "glShaderSource", (uintptr_t)&glShaderSourceHook },
