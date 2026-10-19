@@ -307,8 +307,11 @@ void glBindFramebufferHook(GLenum target, GLuint fb) {
     glBindFramebuffer(target, fb);
 }
 
+// DIAGNOSTIC: force the clear colour to bright blue. Blue on screen means
+// frames reach the display and the game's own draws are what's invisible.
 void glClearHook(GLbitfield mask) {
     st_clears++;
+    if (mask & GL_COLOR_BUFFER_BIT) glClearColor(0.0f, 0.3f, 1.0f, 1.0f);
     glClear(mask);
 }
 
