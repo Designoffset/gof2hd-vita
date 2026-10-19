@@ -32,7 +32,21 @@
 
 static pthread_t s_pthreadSelfRet;
 
+static pthread_mutex_t static_mutex_lock = PTHREAD_MUTEX_INITIALIZER;
+static void init_static_mutex_locked(pthread_mutex_t **mutex);
+
+// Statically initialised bionic mutexes arrive as small type tags, not
+// pointers. Turn them into real mutexes once, under a lock.
 static void init_static_mutex(pthread_mutex_t **mutex) {
+    int v = (int)*mutex;
+    if (v != MUTEX_TYPE_NORMAL && v != MUTEX_TYPE_RECURSIVE && v != MUTEX_TYPE_ERRORCHECK)
+        return;
+    pthread_mutex_lock(&static_mutex_lock);
+    init_static_mutex_locked(mutex);
+    pthread_mutex_unlock(&static_mutex_lock);
+}
+
+static void init_static_mutex_locked(pthread_mutex_t **mutex) {
     pthread_mutex_t *mtxMem = NULL;
 
     switch ((int)*mutex) {
@@ -62,13 +76,20 @@ static void init_static_mutex(pthread_mutex_t **mutex) {
     }
 }
 
+// Bionic's PTHREAD_COND_INITIALIZER is all zeroes, so a statically
+// initialised condition variable reaches us as NULL. Create the real one on
+// first use (from any cond function), under a lock so two threads can't race.
+static pthread_mutex_t static_cond_lock = PTHREAD_MUTEX_INITIALIZER;
 static void init_static_cond(pthread_cond_t **cond) {
+    if (*cond != NULL) return;
+    pthread_mutex_lock(&static_cond_lock);
     if (*cond == NULL) {
         pthread_cond_t initTmp = PTHREAD_COND_INITIALIZER;
         pthread_cond_t *condMem = calloc(1, sizeof(pthread_cond_t));
         sceClibMemcpy(condMem, &initTmp, sizeof(pthread_cond_t));
         *cond = condMem;
     }
+    pthread_mutex_unlock(&static_cond_lock);
 }
 
 int pthread_attr_destroy_soloader(pthread_attr_t **attr) {
@@ -198,10 +219,13 @@ int pthread_join_soloader(const pthread_t *thread, void **value_ptr) {
 }
 
 int pthread_cond_wait_soloader(pthread_cond_t **cond, pthread_mutex_t **mutex) {
+    init_static_cond(cond);
+    init_static_mutex(mutex);
     return pthread_cond_wait(*cond, *mutex);
 }
 
 int pthread_cond_broadcast_soloader(pthread_cond_t **cond) {
+    init_static_cond(cond);
     return pthread_cond_broadcast(*cond);
 }
 
