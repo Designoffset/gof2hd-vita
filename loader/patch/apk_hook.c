@@ -212,6 +212,19 @@ static int zip_name_locate_retry(void *za, const char *fname, int flags, void *e
             snprintf(alt, sizeof(alt), "assets/%s", fname + n);
             int r = SO_CONTINUE(int, zip_name_locate_hook, za, alt, flags, error);
             if (r >= 0) return r;
+
+            // The repack also sorted cubemaps into subfolders:
+            // .../cubemaps/cubemap_skybox_N.aei -> .../cubemaps/skyboxes/...
+            // .../cubemaps/cubemap_hangar_X.aei -> .../cubemaps/hangars/...
+            char *cm = strstr(alt, "/cubemaps/");
+            if (cm) {
+                const char *file = cm + strlen("/cubemaps/");
+                const char *sub = strstr(file, "hangar") ? "hangars/" : "skyboxes/";
+                char alt2[512];
+                snprintf(alt2, sizeof(alt2), "%.*s/cubemaps/%s%s", (int)(cm - alt), alt, sub, file);
+                r = SO_CONTINUE(int, zip_name_locate_hook, za, alt2, flags, error);
+                if (r >= 0) return r;
+            }
         }
     }
     static int misses = 0;

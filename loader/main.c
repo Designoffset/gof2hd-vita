@@ -86,6 +86,15 @@ int main(int argc, char* argv[]) {
     JNI_OnLoad(&jvm);
     log_info("JNI_OnLoad() passed");
 
+    // The game hashes its save files with a 16-byte key that the Android side
+    // normally provides through GOF2HD2012.SetOrigamiSuperClub(). Without it
+    // the first save crashes in SHA256_Update. Any fixed value works as long
+    // as it never changes (saves made with it verify against it).
+    void (*SetOrigamiSuperClub)(JNIEnv *, void *, jstring) =
+        sym("Java_net_fishlabs_gof2hdallandroid2012_GOF2HD2012_SetOrigamiSuperClub");
+    SetOrigamiSuperClub(&jni, NULL, "GOF2HD-PSVITA-01");
+    log_info("SetOrigamiSuperClub() passed");
+
     // GOF2HD2012.onCreate()
     setAPKPath(&jni, NULL, APK_PATH);
     setZIPPath(&jni, NULL, APK_PATH);
