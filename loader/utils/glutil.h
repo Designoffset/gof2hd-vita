@@ -19,6 +19,8 @@
 void gl_preload();
 void gl_init();
 void gl_swap();
+GLuint glCreateShaderHook(GLenum type);
+void glCompileShaderHook(GLuint shader);
 
 void glShaderSourceHook(GLuint shader, GLsizei count,
                         const GLchar **string, const GLint *_length);

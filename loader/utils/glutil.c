@@ -40,6 +40,47 @@ void gl_swap() {
     vglSwapBuffers(GL_FALSE);
 }
 
+#define MAX_SHADERS 1024
+static char shader_names[MAX_SHADERS][41];
+
+// Our shader sources are Cg, so create Cg shaders. Plain GL_VERTEX_SHADER /
+// GL_FRAGMENT_SHADER would send them through vitaGL's GLSL translator.
+GLuint glCreateShaderHook(GLenum type) {
+    if (type == GL_VERTEX_SHADER) type = GL_CG_VERTEX_SHADER_EXT;
+    else if (type == GL_FRAGMENT_SHADER) type = GL_CG_FRAGMENT_SHADER_EXT;
+    return glCreateShader(type);
+}
+
+static void shader_log(const char *fmt, const char *a, const char *b) {
+    FILE *f = fopen(DATA_PATH "shader_log.txt", "a");
+    if (!f) return;
+    fprintf(f, fmt, a, b);
+    fclose(f);
+}
+
+// Compile, and if it fails: log why, then swap in a placeholder so linking
+// does not crash and the game can keep going.
+void glCompileShaderHook(GLuint shader) {
+    glCompileShader(shader);
+
+    GLint ok = GL_FALSE;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
+    if (ok) return;
+
+    char info[1024] = "";
+    glGetShaderInfoLog(shader, sizeof(info), NULL, info);
+    const char *name = (shader < MAX_SHADERS && shader_names[shader][0]) ? shader_names[shader] : "(unknown)";
+    shader_log("FAILED %s.cg\n%s\n\n", name, info);
+
+    GLint type = 0;
+    glGetShaderiv(shader, GL_SHADER_TYPE, &type);
+    const GLchar *fallback = (type == GL_VERTEX_SHADER)
+        ? "void main(float4 a_position, float4 out gl_Position : POSITION) { gl_Position = a_position; }"
+        : "float4 main() : COLOR { return float4(1.0, 0.0, 1.0, 1.0); }";
+    glShaderSource(shader, 1, &fallback, NULL);
+    glCompileShader(shader);
+}
+
 void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string,
                         const GLint *_length) {
     int length;
@@ -60,6 +101,10 @@ void glShaderSourceHook(GLuint shader, GLsizei count, const GLchar **string,
     }
 
     char* sha_name = get_string_sha1((uint8_t*)*string, length);
+    if (shader < MAX_SHADERS) {
+        strncpy(shader_names[shader], sha_name, 40);
+        shader_names[shader][40] = '\0';
+    }
 
     // Shaders are shipped as Cg source and compiled at runtime by vitaGL through
     // libshacccg.suprx (no offline psp2cgc available for this build).
