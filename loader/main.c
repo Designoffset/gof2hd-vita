@@ -69,6 +69,7 @@ static volatile const char *wd_stage = "start";
 static volatile uint64_t wd_since = 0;
 static volatile unsigned int wd_frames = 0;
 extern volatile unsigned long long io_bytes_read;
+extern volatile unsigned int io_reads, io_seeks;
 
 static void wd_set(const char *stage) {
     wd_since = sceKernelGetProcessTimeWide();
@@ -81,12 +82,12 @@ static int watchdog_thread(SceSize args, void *argp) {
         sceKernelDelayThread(5 * 1000 * 1000);
         uint64_t now = sceKernelGetProcessTimeWide();
         unsigned int f = wd_frames;
-        logv_info("watchdog: t=%llus stage=%s for %llus frames=%u read=%lluKB",
+        logv_info("watchdog: t=%llus stage=%s for %llus frames=%u read=%lluKB in %u reads, %u seeks",
                   now / 1000000, (const char *)wd_stage, (now - wd_since) / 1000000, f,
-                  io_bytes_read / 1024);
+                  io_bytes_read / 1024, io_reads, io_seeks);
         if (f != last_frames) { last_frames = f; continue; }
-        if (now - wd_since > 90ull * 1000000) {
-            log_info("watchdog: main thread stuck for 90s, crashing to get a core dump");
+        if (now - wd_since > 600ull * 1000000) {
+            log_info("watchdog: main thread stuck for 10 minutes, crashing to get a core dump");
             *(volatile int *)0 = 0xDEAD;
         }
     }

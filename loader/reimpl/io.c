@@ -108,6 +108,11 @@ int readdir_r_soloader(DIR *dirp, dirent64_bionic *entry, dirent64_bionic **resu
 
 FILE *fopen_soloader(char *fname, char *mode) {
     FILE* ret =  fopen(fname, mode);
+    // newlib's default 1 KB stdio buffer turns every small read into a
+    // separate sceIo call (~1.5 MB/s). The game streams everything out of
+    // a 1.3 GB APK, so give read handles a big buffer.
+    if (ret && mode && mode[0] == 'r')
+        setvbuf(ret, NULL, _IOFBF, 128 * 1024);
     logv_debug("[io] fopen(%s): 0x%x", fname, ret);
     return ret;
 }

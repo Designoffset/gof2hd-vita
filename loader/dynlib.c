@@ -128,7 +128,10 @@ static int isxdigit_soloader(int c) { return (c >= '0' && c <= '9') || ((c | 32)
 
 extern so_module so_mod, so_fmodex, so_fmodevent;
 volatile unsigned long long io_bytes_read = 0;
+volatile unsigned int io_reads = 0, io_seeks = 0;
+static int fseek_counted(FILE *f, long o, int w) { io_seeks++; return fseek(f, o, w); }
 static size_t fread_counted(void *ptr, size_t size, size_t n, FILE *f) {
+    io_reads++;
     size_t r = fread(ptr, size, n, f);
     io_bytes_read += (unsigned long long)r * size;
     return r;
@@ -325,7 +328,7 @@ so_default_dynlib default_dynlib[] = {
         { "fprintf", (uintptr_t)&fprintf },
         { "fread", (uintptr_t)&fread_counted },
         { "free", (uintptr_t)&free },
-        { "fseek", (uintptr_t)&fseek },
+        { "fseek", (uintptr_t)&fseek_counted },
         { "fseeko", (uintptr_t)&fseeko },
         { "fstat", (uintptr_t)&fstat_soloader },
         { "ftell", (uintptr_t)&ftell },
