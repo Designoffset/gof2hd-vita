@@ -1,3 +1,4 @@
+#include "utils/logger.h"
 #include <math.h>
 
 so_hook setGameOrientation_hook;
