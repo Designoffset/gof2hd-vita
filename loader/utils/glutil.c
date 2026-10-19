@@ -38,17 +38,24 @@ void gl_preload() {
 // the top-right corner with the CPU, bypassing the GPU entirely.
 volatile unsigned int disp_cb_count = 0;
 volatile void *disp_cb_last = NULL;
+volatile uint32_t disp_px_center = 0, disp_px_corner = 0;
 static void display_cb(void *framebuf) {
     disp_cb_count++;
     disp_cb_last = framebuf;
     uint32_t *px = (uint32_t *)framebuf;
+    disp_px_center = px[272 * 960 + 480];
+    disp_px_corner = px[(544 - 40) * 960 + 40];
     for (int y = 0; y < 60; y++)
         for (int x = 960 - 60; x < 960; x++)
             px[y * 960 + x] = 0xFF00FFFF;
 }
 
 void gl_init() {
-    vglInitExtended(0, 960, 544, 6 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
+    GLboolean ok = vglInitExtended(0, 960, 544, 6 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
+    logv_info("vglInitExtended -> %d; free KB: vram=%u ram=%u phycont=%u budget=%u external=%u",
+              ok, vglMemFree(VGL_MEM_VRAM) / 1024, vglMemFree(VGL_MEM_RAM) / 1024,
+              vglMemFree(VGL_MEM_PHYCONT) / 1024, vglMemFree(VGL_MEM_BUDGET) / 1024,
+              vglMemFree(VGL_MEM_EXTERNAL) / 1024);
     // Translate+compile GLSL in glCompileShader so failures are reported
     // there; POSTPONED mode compiles inside glLinkProgram and crashes on failure.
     vglSetSemanticBindingMode(VGL_MODE_GLOBAL);

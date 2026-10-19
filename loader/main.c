@@ -74,6 +74,7 @@ extern volatile unsigned long long io_bytes_read;
 extern volatile unsigned int io_reads, io_seeks;
 extern volatile unsigned int disp_cb_count;
 extern volatile void *disp_cb_last;
+extern volatile uint32_t disp_px_center, disp_px_corner;
 #include <psp2/display.h>
 #include <psp2/kernel/clib.h>
 
@@ -96,9 +97,10 @@ static int watchdog_thread(SceSize args, void *argp) {
             sceClibMemset(&cur, 0, sizeof(cur));
             cur.size = sizeof(cur);
             int r = sceDisplayGetFrameBuf(&cur, SCE_DISPLAY_SETBUF_NEXTFRAME);
-            logv_info("watchdog: display callbacks=%u last=%p | screen base=%p %dx%d pitch=%d fmt=0x%x r=0x%x",
-                      disp_cb_count, (void *)disp_cb_last, cur.base, cur.width, cur.height, cur.pitch,
-                      cur.pixelformat, r);
+            logv_info("watchdog: display callbacks=%u last=%p | screen base=%p r=0x%x | pixel center=%08x corner=%08x | free KB vram=%u ram=%u ext=%u",
+                      disp_cb_count, (void *)disp_cb_last, cur.base, r, disp_px_center, disp_px_corner,
+                      vglMemFree(VGL_MEM_VRAM) / 1024, vglMemFree(VGL_MEM_RAM) / 1024,
+                      vglMemFree(VGL_MEM_EXTERNAL) / 1024);
         }
         if (f != last_frames) { last_frames = f; continue; }
         if (now - wd_since > 600ull * 1000000) {
@@ -168,6 +170,9 @@ int main(int argc, char* argv[]) {
         glClear(GL_COLOR_BUFFER_BIT);
         gl_test_marker(i);
         gl_swap();
+        if (i % 60 == 59)
+            logv_info("gpu test frame %d: callbacks=%u center=%08x corner=%08x", i, disp_cb_count,
+                      disp_px_center, disp_px_corner);
     }
     log_info("gpu test done");
     wd_set("setEnvironmentVariables");
