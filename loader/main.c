@@ -72,6 +72,10 @@ static unsigned int frame_counter_for_marker = 0;
 void gl_test_marker(unsigned int frame);
 extern volatile unsigned long long io_bytes_read;
 extern volatile unsigned int io_reads, io_seeks;
+extern volatile unsigned int disp_cb_count;
+extern volatile void *disp_cb_last;
+#include <psp2/display.h>
+#include <psp2/kernel/clib.h>
 
 static void wd_set(const char *stage) {
     wd_since = sceKernelGetProcessTimeWide();
@@ -87,6 +91,15 @@ static int watchdog_thread(SceSize args, void *argp) {
         logv_info("watchdog: t=%llus stage=%s for %llus frames=%u read=%lluKB in %u reads, %u seeks",
                   now / 1000000, (const char *)wd_stage, (now - wd_since) / 1000000, f,
                   io_bytes_read / 1024, io_reads, io_seeks);
+        {
+            SceDisplayFrameBuf cur;
+            sceClibMemset(&cur, 0, sizeof(cur));
+            cur.size = sizeof(cur);
+            int r = sceDisplayGetFrameBuf(&cur, SCE_DISPLAY_SETBUF_NEXTFRAME);
+            logv_info("watchdog: display callbacks=%u last=%p | screen base=%p %dx%d pitch=%d fmt=0x%x r=0x%x",
+                      disp_cb_count, (void *)disp_cb_last, cur.base, cur.width, cur.height, cur.pitch,
+                      cur.pixelformat, r);
+        }
         if (f != last_frames) { last_frames = f; continue; }
         if (now - wd_since > 600ull * 1000000) {
             log_info("watchdog: main thread stuck for 10 minutes, crashing to get a core dump");

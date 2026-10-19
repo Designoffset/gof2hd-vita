@@ -1,3 +1,4 @@
+#include <stdint.h>
 /*
  * utils/glutil.c
  *
@@ -32,11 +33,26 @@ void gl_preload() {
     }
 }
 
+// DIAGNOSTIC: runs in vitaGL's display-queue callback right before each
+// frame is handed to the screen. Counts frames and paints a yellow square in
+// the top-right corner with the CPU, bypassing the GPU entirely.
+volatile unsigned int disp_cb_count = 0;
+volatile void *disp_cb_last = NULL;
+static void display_cb(void *framebuf) {
+    disp_cb_count++;
+    disp_cb_last = framebuf;
+    uint32_t *px = (uint32_t *)framebuf;
+    for (int y = 0; y < 60; y++)
+        for (int x = 960 - 60; x < 960; x++)
+            px[y * 960 + x] = 0xFF00FFFF;
+}
+
 void gl_init() {
     vglInitExtended(0, 960, 544, 6 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
     // Translate+compile GLSL in glCompileShader so failures are reported
     // there; POSTPONED mode compiles inside glLinkProgram and crashes on failure.
     vglSetSemanticBindingMode(VGL_MODE_GLOBAL);
+    vglSetDisplayCallback(display_cb);
 }
 
 void gl_swap() {
