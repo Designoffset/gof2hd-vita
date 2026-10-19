@@ -159,6 +159,17 @@ int main(int argc, char* argv[]) {
     // GLViewRenderer.onSurfaceCreated()
     gl_init();
 
+    // DIAGNOSTIC: 5 seconds of solid blue + the corner square before the game
+    // has drawn anything, to check the GPU path on its own.
+    wd_set("gpu test");
+    for (int i = 0; i < 300; i++) {
+        glDisable(GL_SCISSOR_TEST);
+        glClearColor(0.0f, 0.3f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        gl_test_marker(i);
+        gl_swap();
+    }
+    log_info("gpu test done");
     wd_set("setEnvironmentVariables");
     setEnvironmentVariables(&jni, NULL, (jobject)0x42424242);
     log_info("setEnvironmentVariables() passed");
@@ -182,6 +193,15 @@ int main(int argc, char* argv[]) {
         }
 
         uint64_t t0 = sceKernelGetProcessTimeWide();
+        // DIAGNOSTIC: every other 3 seconds, skip the game's frame and only
+        // clear to blue, to see whether the game's draws break the scene.
+        static unsigned int loopf = 0;
+        loopf++;
+        if ((loopf / 180) & 1) {
+            glDisable(GL_SCISSOR_TEST);
+            glClearColor(0.0f, 0.3f, 1.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+        } else
         renderstep(&jni, NULL, (jlong)(t0 / 1000));
         gl_test_marker(frame_counter_for_marker++);
         gl_swap();
