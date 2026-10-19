@@ -7,13 +7,6 @@
 	 
 	<gate>
 		<startup-image>mkktbkkt.png</startup-image>
-	</gate>
-
-	<frame id="frame3">
-		<liveitem>
-			<target>psla:-config</target>
-			<image>conf.png</image>
-		</liveitem>
-	</frame>	
+	</gate>	
 	
 </livearea>

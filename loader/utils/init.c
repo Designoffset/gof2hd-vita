@@ -65,8 +65,7 @@ void soloader_init_all() {
     if (eventParam.type == 0x05) {
         char buffer[2048];
         sceAppUtilAppEventParseLiveArea(&eventParam, buffer);
-        if (strstr(buffer, "-config"))
-            sceAppMgrLoadExec("app0:/configurator.bin", NULL, NULL);
+        // (The Xperia port's configurator app is not part of this build.)
     }
 
     // Set default overclock values
