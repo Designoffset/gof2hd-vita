@@ -1,0 +1,32 @@
+// profile sce_vp_psp2
+
+uniform float4x4 u_WorldMatrix;
+uniform float4x4 u_UvMatrix;
+uniform float u_fogMaxDist;
+uniform float u_fogMinDist;
+uniform float3 u_eyeposmodel;
+uniform bool u_EnableFog;
+uniform bool u_UVAnimation;
+
+void main(
+	float4 a_position,
+	float2 a_texCoord,
+	float2 out v_texCoord : TEXCOORD0,
+	float out v_FogFactor : TEXCOORD1,
+	float4 out gl_Position : POSITION
+) {
+	gl_Position = mul(a_position, u_WorldMatrix);
+
+	if (u_UVAnimation)
+		v_texCoord = mul(float4(a_texCoord.x, a_texCoord.y, 0.0, 1.0), u_UvMatrix).xy;
+	else
+		v_texCoord = a_texCoord;
+
+	if (u_EnableFog) {
+		float eyeDist = distance(u_eyeposmodel, a_position.xyz);
+		float factor = (u_fogMaxDist - eyeDist) / (u_fogMaxDist - u_fogMinDist);
+		v_FogFactor = 1.0 - clamp(factor, 0.0, 1.0);
+	} else {
+		v_FogFactor = 1.0;
+	}
+}

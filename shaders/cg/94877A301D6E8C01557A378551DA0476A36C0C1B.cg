@@ -1,0 +1,9 @@
+// profile sce_fp_psp2
+
+uniform sampler2D s_texture;
+uniform float4 glColor;
+uniform float u_DarkenValue;
+
+float4 main(float2 v_texCoord : TEXCOORD0) {
+	return glColor * tex2D( s_texture, v_texCoord );
+}
