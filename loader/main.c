@@ -111,6 +111,18 @@ static int watchdog_thread(SceSize args, void *argp) {
     return 0;
 }
 
+static void gpu_probe(const char *label, float r, float g, float b) {
+    for (int i = 0; i < 90; i++) {
+        glDisable(GL_SCISSOR_TEST);
+        glClearColor(r, g, b, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        gl_swap();
+        if (i % 30 == 29)
+            logv_info("probe %s frame %d: callbacks=%u center=%08x corner=%08x", label, i,
+                      disp_cb_count, disp_px_center, disp_px_corner);
+    }
+}
+
 static void *sym(const char *name) {
     void *s = (void *)so_symbol(&so_mod, name);
     if (!s) fatal_error("Error: symbol %s not found in the game library.", name);
@@ -118,7 +130,13 @@ static void *sym(const char *name) {
 }
 
 int main(int argc, char* argv[]) {
+    // DIAGNOSTIC: bring up vitaGL before anything else and check that a GPU
+    // clear actually reaches the screen, then repeat after the game libraries
+    // are loaded, to find what breaks GPU output.
+    gl_init();
+    gpu_probe("before loading", 0.0f, 1.0f, 0.0f);
     soloader_init_all();
+    gpu_probe("after loading", 1.0f, 0.0f, 1.0f);
 
     wd_set("init");
     SceUID wd = sceKernelCreateThread("watchdog", watchdog_thread, 0x10000100, 0x4000, 0, 0, NULL);
@@ -159,7 +177,6 @@ int main(int argc, char* argv[]) {
     log_info("setCountry() passed");
 
     // GLViewRenderer.onSurfaceCreated()
-    gl_init();
 
     // DIAGNOSTIC: 5 seconds of solid blue + the corner square before the game
     // has drawn anything, to check the GPU path on its own.

@@ -51,7 +51,7 @@ static void display_cb(void *framebuf) {
 }
 
 void gl_init() {
-    GLboolean ok = vglInitExtended(0, 960, 544, 6 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
+    GLboolean ok = vglInitExtended(0, 960, 544, 30 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
     logv_info("vglInitExtended -> %d; free KB: vram=%u ram=%u phycont=%u budget=%u external=%u",
               ok, vglMemFree(VGL_MEM_VRAM) / 1024, vglMemFree(VGL_MEM_RAM) / 1024,
               vglMemFree(VGL_MEM_PHYCONT) / 1024, vglMemFree(VGL_MEM_BUDGET) / 1024,
