@@ -68,6 +68,8 @@ static void handle_stick();
 static volatile const char *wd_stage = "start";
 static volatile uint64_t wd_since = 0;
 static volatile unsigned int wd_frames = 0;
+static unsigned int frame_counter_for_marker = 0;
+void gl_test_marker(unsigned int frame);
 extern volatile unsigned long long io_bytes_read;
 extern volatile unsigned int io_reads, io_seeks;
 
@@ -168,6 +170,7 @@ int main(int argc, char* argv[]) {
 
         uint64_t t0 = sceKernelGetProcessTimeWide();
         renderstep(&jni, NULL, (jlong)(t0 / 1000));
+        gl_test_marker(frame_counter_for_marker++);
         gl_swap();
 
         // Heartbeat for debugging: once a second for the first minute, then every 10s.

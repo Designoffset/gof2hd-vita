@@ -59,6 +59,21 @@ static void _log_file(const char *s) {
 
 void loader_log_raw(const char *s) { _log_file(s); }
 
+// vitaGL's internal error log (built with LOG_ERRORS), capped so a
+// per-frame error can't flood the card.
+void loader_vgl_log(const char *fmt, ...) {
+    static int count = 0;
+    static char buf[1024];
+    if (count >= 3000) return;
+    count++;
+    va_list list;
+    va_start(list, fmt);
+    sceClibVsnprintf(buf + 7, sizeof(buf) - 8, fmt, list);
+    va_end(list);
+    sceClibMemcpy(buf, "[VGL]  ", 7);
+    _log_file(buf);
+}
+
 #define LOG_PRINT \
     va_list list; \
     va_start(list, fmt); \

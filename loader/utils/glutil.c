@@ -577,3 +577,30 @@ EGLBoolean eglDestroySurface (EGLDisplay dpy, EGLSurface surface) {
 EGLBoolean eglTerminate(EGLDisplay dpy) {
     return EGL_TRUE;
 }
+
+// DIAGNOSTIC: a red/green blinking square in the top-left corner drawn
+// straight through vitaGL after every game frame, to tell "nothing reaches
+// the display" apart from "the game draws black".
+void gl_test_marker(unsigned int frame) {
+    GLint box[4];
+    GLfloat cc[4];
+    GLint fb = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fb);
+    if (fb != 0) glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    GLboolean sc = glIsEnabled(GL_SCISSOR_TEST);
+    glGetIntegerv(GL_SCISSOR_BOX, box);
+    glGetFloatv(GL_COLOR_CLEAR_VALUE, cc);
+    GLboolean cm[4];
+    glGetBooleanv(GL_COLOR_WRITEMASK, cm);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(0, 544 - 80, 80, 80);
+    if ((frame / 30) & 1) glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
+    else glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glScissor(box[0], box[1], box[2], box[3]);
+    if (!sc) glDisable(GL_SCISSOR_TEST);
+    glClearColor(cc[0], cc[1], cc[2], cc[3]);
+    glColorMask(cm[0], cm[1], cm[2], cm[3]);
+    if (fb != 0) glBindFramebuffer(GL_FRAMEBUFFER, fb);
+}
