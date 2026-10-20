@@ -176,6 +176,7 @@ int main(int argc, char* argv[]) {
 
         uint64_t t0 = sceKernelGetProcessTimeWide();
         money_tick();
+        { extern void station_tick(void); station_tick(); }
         renderstep(&jni, NULL, (jlong)(t0 / 1000));
         draw_controls_overlay();
         gl_swap();
