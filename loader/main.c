@@ -270,6 +270,9 @@ static void controls_init(void) {
     BackButtonPressed = sym(JNI_PREFIX "BackButtonPressed");
 }
 
+static void assign_roles(void);
+static int hud_cache_loaded = 0;
+
 enum { HUD_FIRE, HUD_SEC_FIRE, HUD_BOOST, HUD_TURRET, HUD_AUTOPILOT, HUD_JUMP, HUD_ACTION, HUD_PAUSE, HUD_COUNT };
 
 // Same layout as the original gof2-vita port (Xperia Play keys on the Vita):
@@ -287,6 +290,7 @@ typedef struct { unsigned int id; int x0, y0, x1, y1, n; } hud_box;
 extern hud_box hud_boxes[32];
 extern int hud_box_count;
 int controls_probe_hud(void);
+int controls_load_hud_cache(void);
 
 // Which probed element plays which role, picked by where it sits on screen
 // (see the HUD layout: stick + boost bottom-left, fire cluster bottom-right,
@@ -472,6 +476,11 @@ static void cursor_controls(SceCtrlData *pad, unsigned int pressed, unsigned int
         touch(CURSOR_POINTER, ACTION_UP, (int)cursor_x, (int)cursor_y);
     }
 
+    // Hide the cursor again after 3 seconds without using it.
+    static int idle = 0;
+    if (dx != 0.f || dy != 0.f || cursor_down) idle = 0;
+    else if (++idle > 180) cursor_shown = 0;
+
     if ((pressed & SCE_CTRL_CIRCLE) && BackButtonPressed)
         BackButtonPressed(&jni, NULL);
 
@@ -520,11 +529,16 @@ static void handle_controls(int screen_touched) {
     int mode = (controls_in_space() && !paused && !controls_overlay_open()) ? 1 : 0;
     // The HUD is laid out a little after flight starts: scan once a second
     // (6 times a second) until its buttons are found.
-    static int probe_timer = 0;
+    if (!hud_cache_loaded) {
+        hud_cache_loaded = 1;
+        if (controls_load_hud_cache()) assign_roles();
+    }
+    // Rescan once per session (cached boxes keep working meanwhile).
+    static int probe_timer = 0, probed = 0;
     if (mode != 1) probe_timer = 0;
-    else if (hud_box_count == 0 && probe_timer-- <= 0) {
+    else if (!probed && probe_timer-- <= 0) {
         probe_timer = 10;
-        if (controls_probe_hud()) assign_roles();
+        if (controls_probe_hud()) { assign_roles(); probed = 1; }
     }
     if (mode != prev_mode) {
         logv_info("controls: %s | fire %d,%d sec %d,%d boost %d,%d turret %d,%d auto %d,%d jump %d,%d action %d,%d pause %d,%d stick %d,%d r=%d",
@@ -536,7 +550,6 @@ static void handle_controls(int screen_touched) {
                   *Globals__touch_stick_x, *Globals__touch_stick_y, *Globals__smallButton_dim);
         release_all();
         prev_mode = mode;
-        if (!mode) cursor_shown = 1;
     }
     if (mode) flight_controls(&pad, pressed, released);
     else cursor_controls(&pad, pressed, released);

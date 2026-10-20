@@ -15,6 +15,8 @@
 #include "AFakeNative/keycodes.h"
 #include "utils/settings.h"
 #include "utils/logger.h"
+#include <string.h>
+#include <stdio.h>
 
 void ** Globals__appManager;
 void ** gEngine;
@@ -140,6 +142,31 @@ static void *current_hud(void) {
     return *(void **)((uintptr_t)game + 0x74);
 }
 
+// The scan only works once the HUD exists, a little while into each flight.
+// Keep the last good result on the memory card so the buttons work from the
+// first frame next time.
+#define HUD_CACHE DATA_PATH "hud_layout.bin"
+
+static void controls_save_hud_cache(void) {
+    FILE *f = fopen(HUD_CACHE, "wb");
+    if (!f) return;
+    fwrite(&hud_box_count, sizeof(int), 1, f);
+    fwrite(hud_boxes, sizeof(hud_box), hud_box_count, f);
+    fclose(f);
+}
+
+int controls_load_hud_cache(void) {
+    FILE *f = fopen(HUD_CACHE, "rb");
+    if (!f) return 0;
+    int n = 0;
+    if (fread(&n, sizeof(int), 1, f) == 1 && n > 0 && n <= 32 &&
+        fread(hud_boxes, sizeof(hud_box), n, f) == (size_t)n)
+        hud_box_count = n;
+    fclose(f);
+    logv_info("hud: %d cached elements", hud_box_count);
+    return hud_box_count;
+}
+
 int controls_probe_hud(void) {
     void *hud = current_hud();
     static int logged = 0;
@@ -151,7 +178,12 @@ int controls_probe_hud(void) {
     // touchedElement has a side-effect path (it presses TouchButtons) when
     // this flag is set; only scan when it isn't.
     if (*(unsigned char *)((uintptr_t)hud + 0x282)) return 0;
-    hud_box_count = 0;
+    // Scan into a scratch list so a scan that comes up short doesn't wipe
+    // the boxes already known (from the cache or an earlier scan).
+    static hud_box found[32];
+    int found_count = 0;
+    #define hud_boxes found
+    #define hud_box_count found_count
     for (int y = 4; y < 544; y += 8) {
         for (int x = 4; x < 960; x += 8) {
             unsigned int id = Hud_touchedElement(hud, x, y);
@@ -171,6 +203,12 @@ int controls_probe_hud(void) {
             b->n++;
         }
     }
+    #undef hud_boxes
+    #undef hud_box_count
+    if (found_count < 4) return 0;
+    memcpy(hud_boxes, found, sizeof(found));
+    hud_box_count = found_count;
+    controls_save_hud_cache();
     for (int i = 0; i < hud_box_count; i++)
         logv_info("hud: element 0x%x box %d,%d - %d,%d (center %d,%d, %d hits)", hud_boxes[i].id,
                   hud_boxes[i].x0, hud_boxes[i].y0, hud_boxes[i].x1, hud_boxes[i].y1,
