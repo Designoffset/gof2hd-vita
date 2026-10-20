@@ -502,7 +502,9 @@ static void handle_controls(int screen_touched) {
     unsigned int released = ~pad.buttons & prev_buttons;
     prev_buttons = pad.buttons;
 
-    if (screen_touched) cursor_shown = 0;
+    extern int hud_fade_touch_timer;
+    if (screen_touched) { cursor_shown = 0; hud_fade_touch_timer = 180; }
+    else if (hud_fade_touch_timer > 0) hud_fade_touch_timer--;
 
     static int last_module = -2;
     int module = controls_module();

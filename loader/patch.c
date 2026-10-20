@@ -22,6 +22,7 @@ extern so_module so_mod;
 #include "patch/screen_fix.c"
 #include "patch/apk_hook.c"
 #include "patch/money_fix.c"
+#include "patch/hud_fade.c"
 
 void so_patch(void) {
     patch__screen_fix();
@@ -31,4 +32,5 @@ void so_patch(void) {
     patch__apk_hook();
     patch__apk_paths();
     patch__money();
+    patch__hud_fade();
 }

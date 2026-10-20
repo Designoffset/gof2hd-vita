@@ -246,10 +246,14 @@ int pthread_attr_init_soloader(pthread_attr_t **attr) {
 }
 
 int pthread_attr_setdetachstate_soloader(pthread_attr_t **attr, int state) {
-    return pthread_attr_setdetachstate(*attr, state);
+    // bionic: 0 = joinable, 1 = detached; newlib has them the other way round.
+    return pthread_attr_setdetachstate(*attr, state ? PTHREAD_CREATE_DETACHED : PTHREAD_CREATE_JOINABLE);
 }
 
 int pthread_attr_setstacksize_soloader(pthread_attr_t **attr, size_t stacksize) {
+    // The Vita refuses stacks under 32 KB (EINVAL); FMOD asks for less for its
+    // stream threads, which then never start. Round small requests up.
+    if (stacksize < 64 * 1024) stacksize = 64 * 1024;
     return pthread_attr_setstacksize(*attr, stacksize);
 }
 
