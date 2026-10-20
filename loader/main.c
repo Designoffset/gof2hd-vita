@@ -62,21 +62,13 @@ static void handle_touch();
 static void handle_buttons();
 static void handle_stick();
 
-// Watchdog: logs which startup stage the main thread is in every 5 seconds,
-// and if one stage lasts over 90 seconds it crashes on purpose so the Vita
-// writes a core dump showing where every thread is stuck.
+// Watchdog: logs which startup stage the main thread is in, and loading
+// progress, every 5 seconds for the first two minutes.
 static volatile const char *wd_stage = "start";
 static volatile uint64_t wd_since = 0;
 static volatile unsigned int wd_frames = 0;
-static unsigned int frame_counter_for_marker = 0;
-void gl_test_marker(unsigned int frame);
 extern volatile unsigned long long io_bytes_read;
 extern volatile unsigned int io_reads, io_seeks;
-extern volatile unsigned int disp_cb_count;
-extern volatile void *disp_cb_last;
-extern volatile uint32_t disp_px_center, disp_px_corner;
-#include <psp2/display.h>
-#include <psp2/kernel/clib.h>
 
 static void wd_set(const char *stage) {
     wd_since = sceKernelGetProcessTimeWide();
@@ -84,43 +76,15 @@ static void wd_set(const char *stage) {
 }
 
 static int watchdog_thread(SceSize args, void *argp) {
-    unsigned int last_frames = 0;
-    while (1) {
+    for (int n = 0; n < 24; n++) {
         sceKernelDelayThread(5 * 1000 * 1000);
         uint64_t now = sceKernelGetProcessTimeWide();
         unsigned int f = wd_frames;
         logv_info("watchdog: t=%llus stage=%s for %llus frames=%u read=%lluKB in %u reads, %u seeks",
                   now / 1000000, (const char *)wd_stage, (now - wd_since) / 1000000, f,
                   io_bytes_read / 1024, io_reads, io_seeks);
-        {
-            SceDisplayFrameBuf cur;
-            sceClibMemset(&cur, 0, sizeof(cur));
-            cur.size = sizeof(cur);
-            int r = sceDisplayGetFrameBuf(&cur, SCE_DISPLAY_SETBUF_NEXTFRAME);
-            logv_info("watchdog: display callbacks=%u last=%p | screen base=%p r=0x%x | pixel center=%08x corner=%08x | free KB vram=%u ram=%u ext=%u",
-                      disp_cb_count, (void *)disp_cb_last, cur.base, r, disp_px_center, disp_px_corner,
-                      vglMemFree(VGL_MEM_VRAM) / 1024, vglMemFree(VGL_MEM_RAM) / 1024,
-                      vglMemFree(VGL_MEM_EXTERNAL) / 1024);
-        }
-        if (f != last_frames) { last_frames = f; continue; }
-        if (now - wd_since > 600ull * 1000000) {
-            log_info("watchdog: main thread stuck for 10 minutes, crashing to get a core dump");
-            *(volatile int *)0 = 0xDEAD;
-        }
     }
     return 0;
-}
-
-static void gpu_probe(const char *label, float r, float g, float b) {
-    for (int i = 0; i < 90; i++) {
-        glDisable(GL_SCISSOR_TEST);
-        glClearColor(r, g, b, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        gl_swap();
-        if (i % 30 == 29)
-            logv_info("probe %s frame %d: callbacks=%u center=%08x corner=%08x", label, i,
-                      disp_cb_count, disp_px_center, disp_px_corner);
-    }
 }
 
 static void *sym(const char *name) {
@@ -130,13 +94,7 @@ static void *sym(const char *name) {
 }
 
 int main(int argc, char* argv[]) {
-    // DIAGNOSTIC: bring up vitaGL before anything else and check that a GPU
-    // clear actually reaches the screen, then repeat after the game libraries
-    // are loaded, to find what breaks GPU output.
-    gl_init();
-    gpu_probe("before loading", 0.0f, 1.0f, 0.0f);
     soloader_init_all();
-    gpu_probe("after loading", 1.0f, 0.0f, 1.0f);
 
     wd_set("init");
     SceUID wd = sceKernelCreateThread("watchdog", watchdog_thread, 0x10000100, 0x4000, 0, 0, NULL);
@@ -177,21 +135,8 @@ int main(int argc, char* argv[]) {
     log_info("setCountry() passed");
 
     // GLViewRenderer.onSurfaceCreated()
+    gl_init();
 
-    // DIAGNOSTIC: 5 seconds of solid blue + the corner square before the game
-    // has drawn anything, to check the GPU path on its own.
-    wd_set("gpu test");
-    for (int i = 0; i < 300; i++) {
-        glDisable(GL_SCISSOR_TEST);
-        glClearColor(0.0f, 0.3f, 1.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        gl_test_marker(i);
-        gl_swap();
-        if (i % 60 == 59)
-            logv_info("gpu test frame %d: callbacks=%u center=%08x corner=%08x", i, disp_cb_count,
-                      disp_px_center, disp_px_corner);
-    }
-    log_info("gpu test done");
     wd_set("setEnvironmentVariables");
     setEnvironmentVariables(&jni, NULL, (jobject)0x42424242);
     log_info("setEnvironmentVariables() passed");
@@ -215,17 +160,7 @@ int main(int argc, char* argv[]) {
         }
 
         uint64_t t0 = sceKernelGetProcessTimeWide();
-        // DIAGNOSTIC: every other 3 seconds, skip the game's frame and only
-        // clear to blue, to see whether the game's draws break the scene.
-        static unsigned int loopf = 0;
-        loopf++;
-        if ((loopf / 180) & 1) {
-            glDisable(GL_SCISSOR_TEST);
-            glClearColor(0.0f, 0.3f, 1.0f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-        } else
         renderstep(&jni, NULL, (jlong)(t0 / 1000));
-        gl_test_marker(frame_counter_for_marker++);
         gl_swap();
 
         // Heartbeat for debugging: once a second for the first minute, then every 10s.

@@ -33,25 +33,8 @@ void gl_preload() {
     }
 }
 
-// DIAGNOSTIC: runs in vitaGL's display-queue callback right before each
-// frame is handed to the screen. Counts frames and paints a yellow square in
-// the top-right corner with the CPU, bypassing the GPU entirely.
-volatile unsigned int disp_cb_count = 0;
-volatile void *disp_cb_last = NULL;
-volatile uint32_t disp_px_center = 0, disp_px_corner = 0;
-static void display_cb(void *framebuf) {
-    disp_cb_count++;
-    disp_cb_last = framebuf;
-    uint32_t *px = (uint32_t *)framebuf;
-    disp_px_center = px[272 * 960 + 480];
-    disp_px_corner = px[(544 - 40) * 960 + 40];
-    for (int y = 0; y < 60; y++)
-        for (int x = 960 - 60; x < 960; x++)
-            px[y * 960 + x] = 0xFF00FFFF;
-}
-
 void gl_init() {
-    GLboolean ok = vglInitExtended(0, 960, 544, 30 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
+    GLboolean ok = vglInitExtended(0, 960, 544, 6 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
     logv_info("vglInitExtended -> %d; free KB: vram=%u ram=%u phycont=%u budget=%u external=%u",
               ok, vglMemFree(VGL_MEM_VRAM) / 1024, vglMemFree(VGL_MEM_RAM) / 1024,
               vglMemFree(VGL_MEM_PHYCONT) / 1024, vglMemFree(VGL_MEM_BUDGET) / 1024,
@@ -59,7 +42,6 @@ void gl_init() {
     // Translate+compile GLSL in glCompileShader so failures are reported
     // there; POSTPONED mode compiles inside glLinkProgram and crashes on failure.
     vglSetSemanticBindingMode(VGL_MODE_GLOBAL);
-    vglSetDisplayCallback(display_cb);
 }
 
 void gl_swap() {
@@ -330,15 +312,10 @@ void glBindFramebufferHook(GLenum target, GLuint fb) {
     glBindFramebuffer(target, fb);
 }
 
-// DIAGNOSTIC: force the clear colour to bright blue. Blue on screen means
-// frames reach the display and the game's own draws are what's invisible.
+// Counts clears for the heartbeat stats.
 void glClearHook(GLbitfield mask) {
     st_clears++;
-    if (mask & GL_COLOR_BUFFER_BIT) glClearColor(0.0f, 0.3f, 1.0f, 1.0f);
-    GLboolean sc = glIsEnabled(GL_SCISSOR_TEST);
-    if (sc) glDisable(GL_SCISSOR_TEST);
     glClear(mask);
-    if (sc) glEnable(GL_SCISSOR_TEST);
 }
 
 void gl_stats_reset(void) { st_draws = st_draws_fb0 = st_clears = st_fbbinds = 0; }
@@ -599,31 +576,4 @@ EGLBoolean eglDestroySurface (EGLDisplay dpy, EGLSurface surface) {
 
 EGLBoolean eglTerminate(EGLDisplay dpy) {
     return EGL_TRUE;
-}
-
-// DIAGNOSTIC: a red/green blinking square in the top-left corner drawn
-// straight through vitaGL after every game frame, to tell "nothing reaches
-// the display" apart from "the game draws black".
-void gl_test_marker(unsigned int frame) {
-    GLint box[4];
-    GLfloat cc[4];
-    GLint fb = 0;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fb);
-    if (fb != 0) glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    GLboolean sc = glIsEnabled(GL_SCISSOR_TEST);
-    glGetIntegerv(GL_SCISSOR_BOX, box);
-    glGetFloatv(GL_COLOR_CLEAR_VALUE, cc);
-    GLboolean cm[4];
-    glGetBooleanv(GL_COLOR_WRITEMASK, cm);
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(0, 544 - 80, 80, 80);
-    if ((frame / 30) & 1) glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
-    else glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glScissor(box[0], box[1], box[2], box[3]);
-    if (!sc) glDisable(GL_SCISSOR_TEST);
-    glClearColor(cc[0], cc[1], cc[2], cc[3]);
-    glColorMask(cm[0], cm[1], cm[2], cm[3]);
-    if (fb != 0) glBindFramebuffer(GL_FRAMEBUFFER, fb);
 }
