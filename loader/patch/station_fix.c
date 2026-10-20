@@ -24,7 +24,7 @@ static int (*Canvas_ImgHeight)(void *, unsigned);
 void station_tick(void) {
     if (!GetApplicationModule || !Globals__appManager || !*Globals__appManager) return;
     if (!Globals__layout_p || !*Globals__layout_p || !Globals__canvas_p || !*Globals__canvas_p) return;
-    void *st = GetApplicationModule(*Globals__appManager, 1);
+    void *st = GetApplicationModule(*Globals__appManager, 5);  // 5 = station (log: "game module 1 -> 5")
     if (!st || *(uintptr_t *)st != ModStation_vtable) return;
 
     int *arr = *(int **)((uintptr_t)st + 0x8c);           // Array<TouchButton*>
