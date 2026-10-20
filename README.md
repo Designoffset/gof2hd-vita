@@ -11,6 +11,15 @@ Galaxy on Fire 2 · PS Vita Port
   <a href="#license">License</a>
 </p>
 
+> **This fork: Galaxy on Fire 2 HD (2012 Android build).** The `gof2hd-2012-build`
+> branch retargets the loader to the 2012 *HD* Android release, so the Valkyrie
+> and Supernova add-ons (and the Kaamo Club) are included. On top of the
+> original port it adds: HD rendering at 60 fps (softfp vitaGL fixes, ported Cg
+> shaders), FMOD Ex sound with music and voice acting, Vita button controls
+> mapped onto the 2012 HUD (found at runtime), see-through on-screen controls,
+> corrected character portraits, add-ons unlocked and 999,999,999 credits.
+> You need your own copy of the game. See [BUILDING-GOF2HD.md](BUILDING-GOF2HD.md).
+
 Galaxy On Fire 2 is a spaceflight simulation video game. The game revolves
 around spaceflight and space combat, set in a universe with multiple star
 systems. Players can fight enemies/friends, mine for ore, trade commodities,
