@@ -253,6 +253,7 @@ extern int *Globals__action_menu_x, *Globals__action_menu_y;
 extern int *Globals__smallButton_dim;
 extern int *Globals__touch_stick_x, *Globals__touch_stick_y;
 int controls_overlay_open(void);
+int controls_module(void);
 
 static void (*BackButtonPressed)(JNIEnv *, void *) = NULL;
 
@@ -407,6 +408,13 @@ static void handle_controls(int screen_touched) {
     prev_buttons = pad.buttons;
 
     if (screen_touched) cursor_shown = 0;
+
+    static int last_module = -2;
+    int module = controls_module();
+    if (module != last_module) {
+        logv_info("controls: game module %d -> %d", last_module, module);
+        last_module = module;
+    }
 
     int mode = (controls_in_space() && !controls_overlay_open()) ? 1 : 0;
     if (mode != prev_mode) {

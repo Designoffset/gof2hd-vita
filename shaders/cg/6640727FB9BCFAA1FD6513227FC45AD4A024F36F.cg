@@ -1,10 +1,14 @@
 // profile sce_fp_psp2
 
-uniform sampler2D s_texture[2];
+uniform sampler2D s_texture_0;
+uniform sampler2D s_texture_1;
 uniform samplerCUBE u_texture_cubemap;
-uniform float3 u_AmbientColor[2];
-uniform float3 u_DiffuseColor[2];
-uniform float3 u_SpecularColor[2];
+uniform float3 u_AmbientColor_0;
+uniform float3 u_AmbientColor_1;
+uniform float3 u_DiffuseColor_0;
+uniform float3 u_DiffuseColor_1;
+uniform float3 u_SpecularColor_0;
+uniform float3 u_SpecularColor_1;
 uniform float u_SpecularPower;
 uniform float3 u_RimColor;
 uniform float3x3 u_ModelMatrix;
@@ -14,8 +18,8 @@ uniform bool u_EnableFog;
 uniform float3 u_fogColor;
 
 float4 main(float2 v_texCoord : TEXCOORD0, float3 v_eye_dir : TEXCOORD1, float3 v_specular_dir0 : TEXCOORD2, float3 v_specular_dir1 : TEXCOORD3, float3 v_lightvec0 : TEXCOORD4, float3 v_lightvec1 : TEXCOORD5, float v_FogFactor : TEXCOORD6) {
-	float4 colorTex  = tex2Dbias(s_texture[0], float4(v_texCoord, 0.0, u_TexBiasDiffuse));
-	float4 normalTex = tex2Dbias(s_texture[1], float4(v_texCoord, 0.0, u_TexBiasNormal));
+	float4 colorTex  = tex2Dbias(s_texture_0, float4(v_texCoord, 0.0, u_TexBiasDiffuse));
+	float4 normalTex = tex2Dbias(s_texture_1, float4(v_texCoord, 0.0, u_TexBiasNormal));
 	float3 n = normalTex.rgb * 2.0 - 1.0;
 	float3 specTex = float3(normalTex.a);
 	float s1 = pow(saturate(dot(v_specular_dir0, n)), u_SpecularPower);
@@ -27,9 +31,9 @@ float4 main(float2 v_texCoord : TEXCOORD0, float3 v_eye_dir : TEXCOORD1, float3 
 	float3 rimEffect = rim * reflectTex * u_RimColor;
 	float reflectivity = clamp(smoothstep(0.6, 1.0, 1.0 - dot(v_eye_dir, n)), reflectTex, normalTex.a * 2.0 + rim);
 	float3 reflectDir = mul(reflect(v_eye_dir, n), u_ModelMatrix);
-	float3 outColor = (u_AmbientColor[0] + u_AmbientColor[1] + d1 * u_DiffuseColor[0] + d2 * u_DiffuseColor[1]) * colorTex.rgb
+	float3 outColor = (u_AmbientColor_0 + u_AmbientColor_1 + d1 * u_DiffuseColor_0 + d2 * u_DiffuseColor_1) * colorTex.rgb
 		+ texCUBE(u_texture_cubemap, reflectDir).rgb * reflectivity
-		+ (s1 * u_SpecularColor[0] + s2 * u_SpecularColor[1]) * specTex + rimEffect;
+		+ (s1 * u_SpecularColor_0 + s2 * u_SpecularColor_1) * specTex + rimEffect;
 	if (u_EnableFog) outColor = lerp(outColor, u_fogColor, v_FogFactor);
 	return float4(outColor, colorTex.a);
 }

@@ -1,13 +1,15 @@
 // profile sce_fp_psp2
 
-uniform sampler2D s_texture[3];
+uniform sampler2D s_texture_0;
+uniform sampler2D s_texture_1;
+uniform sampler2D s_texture_2;
 uniform float3 u_AmbientColor;
 uniform float3 u_DiffuseColor;
 uniform float3 u_SpecularColor;
 
 float4 main(float2 v_texCoord : TEXCOORD0, float3 v_eye_dir : TEXCOORD1, float3 v_lightvec : TEXCOORD2, float3 v_specular_dir : TEXCOORD3) {
-	float4 colorTex  = tex2Dbias(s_texture[0], float4(v_texCoord, 0.0, -1.0));
-	float4 normalTex = tex2Dbias(s_texture[1], float4(v_texCoord, 0.0, -1.0));
+	float4 colorTex  = tex2Dbias(s_texture_0, float4(v_texCoord, 0.0, -1.0));
+	float4 normalTex = tex2Dbias(s_texture_1, float4(v_texCoord, 0.0, -1.0));
 	float3 n = normalTex.rgb * 2.0 - 1.0;
 	float3 specTex = float3(normalTex.a);
 	float specularIntensity = pow(saturate(dot(v_specular_dir, n)), 10.0);

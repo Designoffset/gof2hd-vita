@@ -618,3 +618,64 @@ void gl_draw_cursor(int x, int y, int pressed) {
     glColorMask(cm[0], cm[1], cm[2], cm[3]);
     if (fb) glBindFramebuffer(GL_FRAMEBUFFER, fb);
 }
+
+// ---------------------------------------------------------------------------
+// Uniform arrays. The game looks up array elements by name ("u_AmbientColor[1]",
+// "s_texture[0]"); vitaGL can't resolve an element inside a Cg program, so the
+// Cg ports declare each element separately as name_N. Lookups that fail are
+// retried with that spelling, and a whole-array lookup ("u_AmbientColor") maps
+// to element 0, with multi-element uploads split across the elements.
+
+#define MAX_SPLIT_UNIFORMS 256
+static struct { GLint base; GLint elem[8]; int n; } split_uniforms[MAX_SPLIT_UNIFORMS];
+static int split_count = 0;
+
+static int split_find(GLint loc) {
+    for (int i = 0; i < split_count; i++)
+        if (split_uniforms[i].base == loc) return i;
+    return -1;
+}
+
+GLint glGetUniformLocationHook(GLuint prog, const GLchar *name) {
+    GLint r = glGetUniformLocation(prog, name);
+    if (r != -1) return r;
+
+    char alt[96];
+    const char *br = strchr(name, '[');
+    if (br) {
+        // "name[N]" -> "name_N"
+        int len = br - name;
+        if (len > 80) return -1;
+        memcpy(alt, name, len);
+        snprintf(alt + len, sizeof(alt) - len, "_%d", atoi(br + 1));
+        return glGetUniformLocation(prog, alt);
+    }
+
+    // "name" -> "name_0", remembering the other elements for array uploads
+    snprintf(alt, sizeof(alt), "%s_0", name);
+    r = glGetUniformLocation(prog, alt);
+    if (r == -1) return -1;
+    if (split_find(r) < 0 && split_count < MAX_SPLIT_UNIFORMS) {
+        int s = split_count++;
+        split_uniforms[s].base = r;
+        split_uniforms[s].n = 0;
+        for (int i = 1; i < 8; i++) {
+            snprintf(alt, sizeof(alt), "%s_%d", name, i);
+            GLint e = glGetUniformLocation(prog, alt);
+            if (e == -1) break;
+            split_uniforms[s].elem[split_uniforms[s].n++] = e;
+        }
+    }
+    return r;
+}
+
+#define SPLIT_UPLOAD(fn, T, comps) \
+void fn##Hook(GLint loc, GLsizei count, const T *v) { \
+    int s = (count > 1 && loc != -1) ? split_find(loc) : -1; \
+    if (s < 0) { fn(loc, count, v); return; } \
+    fn(loc, 1, v); \
+    for (int i = 1; i < count && i - 1 < split_uniforms[s].n; i++) \
+        fn(split_uniforms[s].elem[i - 1], 1, v + i * comps); \
+}
+SPLIT_UPLOAD(glUniform3fv, GLfloat, 3)
+SPLIT_UPLOAD(glUniform4fv, GLfloat, 4)

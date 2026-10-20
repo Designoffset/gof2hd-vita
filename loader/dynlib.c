@@ -147,6 +147,49 @@ void __assert2_soloader(const char *file, int line, const char *func, const char
 static int ret_minus1() { return -1; }
 static void *ret_null() { return NULL; }
 
+// The game creates FMOD's event system without choosing an output, so FMOD
+// picks Android's AudioTrack output, which needs Java code that isn't here.
+// Switch it to the OpenSL ES output (backed by the Vita's audio) right after
+// creation, before the game initialises it.
+typedef int (*fmod_fn)();
+int FMOD_EventSystem_Create_hook(void **eventsystem) {
+    int (*create)(void **) = (void *)so_symbol(&so_fmodevent, "FMOD_EventSystem_Create");
+    int (*getSystem)(void *, void **) = (void *)so_symbol(&so_fmodevent, "FMOD_EventSystem_GetSystemObject");
+    int (*getNum)(void *, int, int *) = (void *)so_symbol(&so_fmodex, "FMOD_System_GetNumPlugins");
+    int (*getHandle)(void *, int, int, unsigned int *) = (void *)so_symbol(&so_fmodex, "FMOD_System_GetPluginHandle");
+    int (*getInfo)(void *, unsigned int, int *, char *, int, unsigned int *) = (void *)so_symbol(&so_fmodex, "FMOD_System_GetPluginInfo");
+    int (*setByPlugin)(void *, unsigned int) = (void *)so_symbol(&so_fmodex, "FMOD_System_SetOutputByPlugin");
+    int (*getOutput)(void *, int *) = (void *)so_symbol(&so_fmodex, "FMOD_System_GetOutput");
+
+    int r = create(eventsystem);
+    logv_info("FMOD_EventSystem_Create -> %d", r);
+    if (r != 0 || !*eventsystem) return r;
+
+    void *sys = NULL;
+    getSystem(*eventsystem, &sys);
+    int cur = -1;
+    if (getOutput) getOutput(sys, &cur);
+    int n = 0;
+    getNum(sys, 0 /* FMOD_PLUGINTYPE_OUTPUT */, &n);
+    logv_info("FMOD: default output type %d, %d output plugins", cur, n);
+    unsigned int chosen = 0;
+    for (int i = 0; i < n; i++) {
+        unsigned int h = 0, ver = 0;
+        int type = 0;
+        char name[128] = "";
+        getHandle(sys, 0, i, &h);
+        getInfo(sys, h, &type, name, sizeof(name), &ver);
+        logv_info("FMOD: output plugin %d: %s (handle %u)", i, name, h);
+        if (strstr(name, "OpenSL")) chosen = h;
+    }
+    if (chosen) {
+        int rr = setByPlugin(sys, chosen);
+        if (getOutput) getOutput(sys, &cur);
+        logv_info("FMOD: switched to OpenSL output -> %d (output type now %d)", rr, cur);
+    }
+    return r;
+}
+
 // FMOD dlopen()s libOpenSLES.so and dlsym()s slCreateEngine / SL_IID_*.
 void *dlopen_soloader(const char *filename, int flag) {
     logv_info("dlopen(%s)", filename ? filename : "(null)");
@@ -369,7 +412,7 @@ so_default_dynlib default_dynlib[] = {
         { "glGetShaderInfoLog", (uintptr_t)&glGetShaderInfoLogHook },
         { "glGetShaderiv", (uintptr_t)&glGetShaderivHook },
         { "glGetString", (uintptr_t)&glGetString },
-        { "glGetUniformLocation", (uintptr_t)&glGetUniformLocation },
+        { "glGetUniformLocation", (uintptr_t)&glGetUniformLocationHook },
         { "glHint", (uintptr_t)&glHint },
         { "glLineWidth", (uintptr_t)&glLineWidth },
         { "glLinkProgram", (uintptr_t)&glLinkProgramHook },
@@ -381,7 +424,7 @@ so_default_dynlib default_dynlib[] = {
         { "glUniform1f", (uintptr_t)&glUniform1f },
         { "glUniform1i", (uintptr_t)&glUniform1i },
         { "glUniform3f", (uintptr_t)&glUniform3f },
-        { "glUniform4fv", (uintptr_t)&glUniform4fv },
+        { "glUniform4fv", (uintptr_t)&glUniform4fvHook },
         { "glUniformMatrix3fv", (uintptr_t)&glUniformMatrix3fv },
         { "glUniformMatrix4fv", (uintptr_t)&glUniformMatrix4fv },
         { "glUseProgram", (uintptr_t)&glUseProgram },
@@ -453,6 +496,7 @@ so_default_dynlib default_dynlib[] = {
         { "__gnu_Unwind_Find_exidx", (uintptr_t)&__gnu_Unwind_Find_exidx_soloader },
         { "__assert2", (uintptr_t)&__assert2_soloader },
         { "dlopen", (uintptr_t)&dlopen_soloader },
+        { "FMOD_EventSystem_Create", (uintptr_t)&FMOD_EventSystem_Create_hook },
         { "dlsym", (uintptr_t)&dlsym_soloader },
         { "dlclose", (uintptr_t)&dlclose_soloader },
         { "dlerror", (uintptr_t)&dlerror_soloader },
@@ -537,7 +581,7 @@ so_default_dynlib default_dynlib[] = {
         { "glRenderbufferStorage", (uintptr_t)&glRenderbufferStorage },
         { "glTexParameterf", (uintptr_t)&glTexParameterf },
         { "glUniform2f", (uintptr_t)&glUniform2f },
-        { "glUniform3fv", (uintptr_t)&glUniform3fv },
+        { "glUniform3fv", (uintptr_t)&glUniform3fvHook },
         { "glUniform4f", (uintptr_t)&glUniform4f },
         { "SL_IID_ANDROIDSIMPLEBUFFERQUEUE", (uintptr_t)&SL_IID_ANDROIDSIMPLEBUFFERQUEUE },
         { "SL_IID_ANDROIDCONFIGURATION", (uintptr_t)&SL_IID_ANDROIDCONFIGURATION },

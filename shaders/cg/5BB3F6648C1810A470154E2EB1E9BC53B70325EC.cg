@@ -1,0 +1,10 @@
+// profile sce_fp_psp2
+
+uniform sampler2D s_texture;
+
+float4 main(float2 v_texCoord : TEXCOORD0, float4 v_color : TEXCOORD1) {
+	float4 colorTex = tex2D(s_texture, v_texCoord);
+	if (colorTex.a < 0.5)
+		discard;
+	return colorTex * v_color;
+}

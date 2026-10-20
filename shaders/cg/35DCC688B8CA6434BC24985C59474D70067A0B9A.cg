@@ -1,12 +1,16 @@
 // profile sce_fp_psp2
 
 uniform sampler2D s_texture;
-uniform float3 u_AmbientColor[2];
-uniform float3 u_DiffuseColor[2];
-uniform float3 u_SpecularColor[2];
+uniform float3 u_AmbientColor_0;
+uniform float3 u_AmbientColor_1;
+uniform float3 u_DiffuseColor_0;
+uniform float3 u_DiffuseColor_1;
+uniform float3 u_SpecularColor_0;
+uniform float3 u_SpecularColor_1;
 uniform float u_SpecularPower;
 uniform float u_TexBiasDiffuse;
-uniform float3 u_lightdirmodel[2];
+uniform float3 u_lightdirmodel_0;
+uniform float3 u_lightdirmodel_1;
 uniform float3 u_eyeposmodel;
 uniform bool u_EnableFog;
 uniform float3 u_fogColor;
@@ -14,12 +18,12 @@ uniform float3 u_fogColor;
 float4 main(float2 v_texCoord : TEXCOORD0, float3 v_normal : TEXCOORD1, float v_FogFactor : TEXCOORD2) {
 	float4 colorTex = tex2Dbias(s_texture, float4(v_texCoord, 0.0, u_TexBiasDiffuse));
 	float3 eye = normalize(u_eyeposmodel);
-	float d1 = saturate(dot(v_normal, u_lightdirmodel[0]));
-	float s1 = pow(saturate(dot(normalize(-reflect(u_lightdirmodel[0], v_normal)), eye)), u_SpecularPower);
-	float d2 = saturate(dot(v_normal, u_lightdirmodel[1]));
-	float s2 = pow(saturate(dot(normalize(-reflect(u_lightdirmodel[1], v_normal)), eye)), u_SpecularPower);
-	float3 outColor = (u_AmbientColor[0] + u_AmbientColor[1] + d1 * u_DiffuseColor[0] + d2 * u_DiffuseColor[1]) * colorTex.rgb
-		+ (s1 * u_SpecularColor[0] + s2 * u_SpecularColor[1]) * 0.2;
+	float d1 = saturate(dot(v_normal, u_lightdirmodel_0));
+	float s1 = pow(saturate(dot(normalize(-reflect(u_lightdirmodel_0, v_normal)), eye)), u_SpecularPower);
+	float d2 = saturate(dot(v_normal, u_lightdirmodel_1));
+	float s2 = pow(saturate(dot(normalize(-reflect(u_lightdirmodel_1, v_normal)), eye)), u_SpecularPower);
+	float3 outColor = (u_AmbientColor_0 + u_AmbientColor_1 + d1 * u_DiffuseColor_0 + d2 * u_DiffuseColor_1) * colorTex.rgb
+		+ (s1 * u_SpecularColor_0 + s2 * u_SpecularColor_1) * 0.2;
 	if (u_EnableFog) outColor = lerp(outColor, u_fogColor, v_FogFactor);
 	return float4(outColor, colorTex.a);
 }

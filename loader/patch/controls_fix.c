@@ -43,10 +43,13 @@ void (*OnTouchEnd)(void * this, int x, int y, int keycode);
 void (*AddTouch)(int pointerId, int action, int x, int y);
 
 // Module 2 is in-flight (space). Buttons only map to HUD touches there.
+// The game's own helper (what the Java side calls) reads the live app manager.
+static int (*ndk_getCurrentApplicationModule)(void) = NULL;
+int controls_module(void) {
+    return ndk_getCurrentApplicationModule ? ndk_getCurrentApplicationModule() : -1;
+}
 int controls_in_space() {
-    if (!GetCurrentApplicationModule || !Globals__appManager || !*Globals__appManager)
-        return 0;
-    return GetCurrentApplicationModule(*Globals__appManager) == 2;
+    return controls_module() == 2;
 }
 
 // Menus, the star map, hacking, choices and dialogue drawn over the flight view.
@@ -129,6 +132,7 @@ void patch__controls_fix() {
     overlay_flags[3] = (unsigned char *) so_symbol(&so_mod, "_ZN7Globals24is_choice_window_visibleE");
     overlay_flags[4] = (unsigned char *) so_symbol(&so_mod, "_ZN7Globals26is_dialogue_window_visibleE");
 
+    ndk_getCurrentApplicationModule = (void *) so_symbol(&so_mod, "ndk_getCurrentApplicationModule");
     Globals__appManager = (void *) so_symbol(&so_mod, "_ZN7Globals10appManagerE");
     gEngine = (void *) so_symbol(&so_mod, "gEngine");
 }

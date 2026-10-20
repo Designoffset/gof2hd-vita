@@ -1,10 +1,13 @@
 // profile sce_fp_psp2
 
-uniform sampler2D s_texture[2];
+uniform sampler2D s_texture_0;
+uniform sampler2D s_texture_1;
 uniform samplerCUBE u_texture_cubemap;
 uniform float3 u_AmbientColor;
-uniform float3 u_DiffuseColor[2];
-uniform float3 u_SpecularColor[2];
+uniform float3 u_DiffuseColor_0;
+uniform float3 u_DiffuseColor_1;
+uniform float3 u_SpecularColor_0;
+uniform float3 u_SpecularColor_1;
 uniform float u_SpecularPower;
 uniform float3 u_RimColor;
 uniform float3x3 u_ModelMatrix;
@@ -15,14 +18,14 @@ uniform float3 u_fogColor;
 uniform float u_lodDist;
 
 float4 main(float2 v_texCoord : TEXCOORD0, float3 v_eye_dir : TEXCOORD1, float3 v_specular_dir0 : TEXCOORD2, float3 v_specular_dir1 : TEXCOORD3, float3 v_lightvec0 : TEXCOORD4, float3 v_lightvec1 : TEXCOORD5, float v_FogFactor : TEXCOORD6, float v_z : TEXCOORD7) {
-	float4 colorTex  = tex2Dbias(s_texture[0], float4(v_texCoord, 0.0, u_TexBiasDiffuse));
-	float4 normalTex = tex2Dbias(s_texture[1], float4(v_texCoord, 0.0, u_TexBiasNormal));
+	float4 colorTex  = tex2Dbias(s_texture_0, float4(v_texCoord, 0.0, u_TexBiasDiffuse));
+	float4 normalTex = tex2Dbias(s_texture_1, float4(v_texCoord, 0.0, u_TexBiasNormal));
 	float3 n = normalTex.rgb * 2.0 - 1.0;
 	float s1 = pow(saturate(dot(v_specular_dir0, n)), u_SpecularPower);
 	float d1 = saturate(dot(n, v_lightvec0));
 	float d2 = saturate(dot(n, v_lightvec1));
-	float3 outColor = (u_AmbientColor + d1 * u_DiffuseColor[0] + d2 * u_DiffuseColor[1]) * colorTex.rgb
-		+ (s1 * u_SpecularColor[0]) * normalTex.a;
+	float3 outColor = (u_AmbientColor + d1 * u_DiffuseColor_0 + d2 * u_DiffuseColor_1) * colorTex.rgb
+		+ (s1 * u_SpecularColor_0) * normalTex.a;
 	if (v_z <= u_lodDist) {
 		float reflectTex = normalTex.a * normalTex.a;
 		float rim = smoothstep(0.8, 1.0, 1.0 - dot(v_eye_dir, n));

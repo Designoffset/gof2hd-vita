@@ -1,7 +1,8 @@
 // profile sce_vp_psp2
 
 uniform float4x4 u_ModelViewProjectionMatrix;
-uniform float3 u_lightdirmodel[2];
+uniform float3 u_lightdirmodel_0;
+uniform float3 u_lightdirmodel_1;
 uniform float3 u_eyeposmodel;
 uniform float u_fogMaxDist;
 uniform float u_fogMinDist;
@@ -31,11 +32,11 @@ void main(
 	v_texCoord = a_texCoord;
 	float3 toEye = u_eyeposmodel - a_position;
 	v_eye_dir = normalize(tbn(a_tangent, a_bitangent, a_normal, toEye));
-	float3 shine = normalize(normalize(toEye) + u_lightdirmodel[0]);
+	float3 shine = normalize(normalize(toEye) + u_lightdirmodel_0);
 	v_specular_dir0 = tbn(a_tangent, a_bitangent, a_normal, shine);
-	v_lightvec0 = tbn(a_tangent, a_bitangent, a_normal, u_lightdirmodel[0]);
-	shine = normalize(normalize(toEye) + u_lightdirmodel[1]);
+	v_lightvec0 = tbn(a_tangent, a_bitangent, a_normal, u_lightdirmodel_0);
+	shine = normalize(normalize(toEye) + u_lightdirmodel_1);
 	v_specular_dir1 = tbn(a_tangent, a_bitangent, a_normal, shine);
-	v_lightvec1 = tbn(a_tangent, a_bitangent, a_normal, u_lightdirmodel[1]);
+	v_lightvec1 = tbn(a_tangent, a_bitangent, a_normal, u_lightdirmodel_1);
 	v_FogFactor = fogFactor(distance(u_eyeposmodel, a_position));
 }

@@ -1,9 +1,14 @@
 // profile sce_fp_psp2
 
-uniform sampler2D s_texture[3];
-uniform float3 u_AmbientColor[2];
-uniform float3 u_DiffuseColor[2];
-uniform float3 u_SpecularColor[2];
+uniform sampler2D s_texture_0;
+uniform sampler2D s_texture_1;
+uniform sampler2D s_texture_2;
+uniform float3 u_AmbientColor_0;
+uniform float3 u_AmbientColor_1;
+uniform float3 u_DiffuseColor_0;
+uniform float3 u_DiffuseColor_1;
+uniform float3 u_SpecularColor_0;
+uniform float3 u_SpecularColor_1;
 uniform float u_SpecularPower;
 uniform float3 u_RimColor;
 uniform float2 u_texelSize;
@@ -12,9 +17,9 @@ uniform float u_CloakRate;
 uniform sampler2D s_texture_base;
 
 float4 main(float2 v_texCoord : TEXCOORD0, float3 v_eye_dir : TEXCOORD1, float3 v_specular_dir0 : TEXCOORD2, float3 v_specular_dir1 : TEXCOORD3, float3 v_lightvec0 : TEXCOORD4, float3 v_lightvec1 : TEXCOORD5, float4 gl_FragCoord : WPOS) {
-	float4 colorTex  = tex2D(s_texture[0], v_texCoord);
-	float4 normalTex = tex2D(s_texture[1], v_texCoord);
-	float4 cloakTex  = tex2D(s_texture[2], v_texCoord);
+	float4 colorTex  = tex2D(s_texture_0, v_texCoord);
+	float4 normalTex = tex2D(s_texture_1, v_texCoord);
+	float4 cloakTex  = tex2D(s_texture_2, v_texCoord);
 	float3 n = normalTex.rgb * 2.0 - 1.0;
 	float3 specTex = float3(normalTex.a);
 	float s1 = pow(saturate(dot(v_specular_dir0, n)), u_SpecularPower);
@@ -24,8 +29,8 @@ float4 main(float2 v_texCoord : TEXCOORD0, float3 v_eye_dir : TEXCOORD1, float3 
 	float reflectTex = normalTex.a * normalTex.a;
 	float rim = smoothstep(0.8, 1.0, 1.0 - dot(v_eye_dir, n));
 	float3 rimEffect = rim * reflectTex * u_RimColor;
-	float3 color = (u_AmbientColor[0] + u_AmbientColor[1] + d1 * u_DiffuseColor[0] + d2 * u_DiffuseColor[1]) * colorTex.rgb
-		+ (s1 * u_SpecularColor[0] + s2 * u_SpecularColor[1]) * specTex + rimEffect;
+	float3 color = (u_AmbientColor_0 + u_AmbientColor_1 + d1 * u_DiffuseColor_0 + d2 * u_DiffuseColor_1) * colorTex.rgb
+		+ (s1 * u_SpecularColor_0 + s2 * u_SpecularColor_1) * specTex + rimEffect;
 	float2 coord;
 	coord.x = (gl_FragCoord.x + n.x * 100.0 * sin(u_CloakRate)) * u_texelSize.x;
 	coord.y = (gl_FragCoord.y + n.y * 75.0 * cos(u_CloakRate)) * u_texelSize.y;
