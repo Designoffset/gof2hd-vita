@@ -1,3 +1,5 @@
+#include <psp2/io/stat.h>
+#include <psp2/io/fcntl.h>
 /*
  * utils/init.c
  *
@@ -53,6 +55,40 @@ so_module so_fmodex, so_fmodevent;
 #define FMODEVENT_PATH "assets/lib/libfmodevent.so"
 // libgof2hdaa.so from the GOF2 HD 2012 Android release
 #define GAME_SO_SHA1 "F1F8904BF1ED8911F6D279B6946E691EE25F4088"
+
+// FMOD opens its sound banks (.fev/.fsb) with plain file I/O, so they can't
+// stay inside the APK. Unpack assets/audio/ to DATA_PATH audio/ once; later
+// launches only compare sizes.
+void extract_audio(void) {
+    unzFile apk = unzOpen(APK_PATH);
+    if (!apk) return;
+    char name[256], dest[PATH_MAX];
+    const char *prefix = "assets/audio/";
+    size_t plen = strlen(prefix);
+    int copied = 0, present = 0;
+    static uint8_t buf[256 * 1024];
+    for (int r = unzGoToFirstFile(apk); r == UNZ_OK; r = unzGoToNextFile(apk)) {
+        unz_file_info info;
+        if (unzGetCurrentFileInfo(apk, &info, name, sizeof(name), NULL, 0, NULL, 0) != UNZ_OK) continue;
+        if (strncmp(name, prefix, plen) != 0 || name[strlen(name) - 1] == '/') continue;
+        snprintf(dest, sizeof(dest), "%saudio/%s", DATA_PATH, name + plen);
+        SceIoStat st;
+        if (sceIoGetstat(dest, &st) >= 0 && st.st_size == (SceOff)info.uncompressed_size) { present++; continue; }
+        mkpath(dest, 0777);
+        if (unzOpenCurrentFile(apk) != UNZ_OK) continue;
+        SceUID fd = sceIoOpen(dest, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+        if (fd >= 0) {
+            int n;
+            while ((n = unzReadCurrentFile(apk, buf, sizeof(buf))) > 0) sceIoWrite(fd, buf, n);
+            sceIoClose(fd);
+            copied++;
+            logv_info("audio: unpacked %s (%lu KB)", dest, (unsigned long)(info.uncompressed_size / 1024));
+        }
+        unzCloseCurrentFile(apk);
+    }
+    unzClose(apk);
+    logv_info("audio: %d files unpacked, %d already present", copied, present);
+}
 
 static void load_module(so_module *mod, const char *path_in_apk, uintptr_t addr, const char *sha1);
 

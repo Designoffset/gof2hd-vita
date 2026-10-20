@@ -95,6 +95,9 @@ static void *sym(const char *name) {
 int main(int argc, char* argv[]) {
     soloader_init_all();
 
+    extern void extract_audio(void);
+    extract_audio();
+
     wd_set("init");
     SceUID wd = sceKernelCreateThread("watchdog", watchdog_thread, 0x10000100, 0x4000, 0, 0, NULL);
     if (wd >= 0) sceKernelStartThread(wd, 0, NULL);

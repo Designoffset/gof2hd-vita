@@ -147,6 +147,35 @@ void __assert2_soloader(const char *file, int line, const char *func, const char
 static int ret_minus1() { return -1; }
 static void *ret_null() { return NULL; }
 
+// FMOD event system: log what happens and load the banks from the unpacked
+// audio folder (see extract_audio in init.c).
+int FMOD_EventSystem_init_hook(void *es, int maxchannels, unsigned int flags, void *extra, unsigned int eflags) {
+    int (*real)(void *, int, unsigned int, void *, unsigned int) =
+        (void *)so_symbol(&so_fmodevent, "_ZN4FMOD11EventSystem4initEijPvj");
+    int r = real(es, maxchannels, flags, extra, eflags);
+    logv_info("FMOD EventSystem::init(%d, 0x%x, 0x%x) -> %d", maxchannels, flags, eflags, r);
+    return r;
+}
+
+int FMOD_EventSystem_load_hook(void *es, const char *name, void *info, void **project) {
+    int (*real)(void *, const char *, void *, void **) =
+        (void *)so_symbol(&so_fmodevent, "_ZN4FMOD11EventSystem4loadEPKcP19FMOD_EVENT_LOADINFOPPNS_12EventProjectE");
+    int (*setMediaPath)(void *, const char *) =
+        (void *)so_symbol(&so_fmodevent, "_ZN4FMOD11EventSystem12setMediaPathEPKc");
+    char path[512];
+    const char *base = name ? strrchr(name, '/') : NULL;
+    base = base ? base + 1 : name;
+    if (base && strstr(base, ".fev")) {
+        if (setMediaPath) setMediaPath(es, DATA_PATH "audio/");
+        snprintf(path, sizeof(path), DATA_PATH "audio/%s", base);
+    } else {
+        snprintf(path, sizeof(path), "%s", name ? name : "");
+    }
+    int r = real(es, path, info, project);
+    logv_info("FMOD EventSystem::load(%s -> %s) -> %d", name ? name : "(null)", path, r);
+    return r;
+}
+
 // The game creates FMOD's event system without choosing an output, so FMOD
 // picks Android's AudioTrack output, which needs Java code that isn't here.
 // Switch it to the OpenSL ES output (backed by the Vita's audio) right after
@@ -497,6 +526,8 @@ so_default_dynlib default_dynlib[] = {
         { "__assert2", (uintptr_t)&__assert2_soloader },
         { "dlopen", (uintptr_t)&dlopen_soloader },
         { "FMOD_EventSystem_Create", (uintptr_t)&FMOD_EventSystem_Create_hook },
+        { "_ZN4FMOD11EventSystem4initEijPvj", (uintptr_t)&FMOD_EventSystem_init_hook },
+        { "_ZN4FMOD11EventSystem4loadEPKcP19FMOD_EVENT_LOADINFOPPNS_12EventProjectE", (uintptr_t)&FMOD_EventSystem_load_hook },
         { "dlsym", (uintptr_t)&dlsym_soloader },
         { "dlclose", (uintptr_t)&dlclose_soloader },
         { "dlerror", (uintptr_t)&dlerror_soloader },
