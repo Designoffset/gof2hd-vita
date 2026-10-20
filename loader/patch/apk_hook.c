@@ -227,9 +227,14 @@ static int zip_name_locate_retry(void *za, const char *fname, int flags, void *e
             }
 
             // Character portraits: the game asks for X_ipad.aei, the repack
-            // only has the high-resolution X_ipad_large.aei.
+            // only has the high-resolution X_ipad_large.aei, which comes out
+            // twice too big. Half-size copies made from those live as loose
+            // files in DATA_PATH data/textures/; let the game fall through to
+            // them, and only use the large one when there is no loose copy.
             size_t al = strlen(alt);
-            if (al > 9 && strcmp(alt + al - 9, "_ipad.aei") == 0) {
+            char loose[512];
+            snprintf(loose, sizeof(loose), DATA_PATH "data/%s", fname + n);
+            if (al > 9 && strcmp(alt + al - 9, "_ipad.aei") == 0 && !file_exists(loose)) {
                 char alt3[512];
                 snprintf(alt3, sizeof(alt3), "%.*s_ipad_large.aei", (int)(al - 9), alt);
                 r = SO_CONTINUE(int, zip_name_locate_hook, za, alt3, flags, error);
