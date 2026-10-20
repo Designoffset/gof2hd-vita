@@ -4,7 +4,7 @@
  * With the Vita's buttons doing the work, the on-screen touch controls only
  * cover the view. Draw them see-through: while Hud::draw runs, any HUD image
  * that sits on one of the touch buttons found by the HUD scan (stick, boost,
- * fire cluster...) is drawn at HUD_FADE_ALPHA. The pause button, bars, radar
+ * fire cluster...) is drawn at HUD_FADE_ALPHA; the steering stick is hidden. The pause button, bars, radar
  * and text are left alone. Touching the screen brings them back to full
  * strength for a few seconds.
  *
@@ -32,13 +32,17 @@ static void (*Canvas_SetColor)(void *, unsigned int);
 static int (*Canvas_ImgW)(void *, unsigned);
 static int (*Canvas_ImgH)(void *, unsigned);
 
-static int point_on_button(int x, int y) {
+// Opacity for an image at (x, y): 1 = untouched. The steering stick (0x20)
+// is hidden completely; the other touch buttons are faded.
+#define HUD_STICK_ALPHA 0.0f
+static float button_alpha(int x, int y) {
     for (int i = 0; i < hud_box_count; i++) {
         hud_box *b = &hud_boxes[i];
         if (b->id == 0x1) continue;  // pause stays solid
-        if (x >= b->x0 - 4 && x <= b->x1 + 4 && y >= b->y0 - 4 && y <= b->y1 + 4) return 1;
+        if (x >= b->x0 - 4 && x <= b->x1 + 4 && y >= b->y0 - 4 && y <= b->y1 + 4)
+            return b->id == 0x20 ? HUD_STICK_ALPHA : HUD_FADE_ALPHA;
     }
-    return 0;
+    return 1.f;
 }
 
 // Returns 1 (and dims the colour) when this image should be faded.
@@ -46,11 +50,13 @@ static int fade_begin(void *canvas, unsigned img, int x, int y, float *saved) {
     if (!hud_drawing || hud_fade_touch_timer > 0 || !hud_box_count || !Canvas_SetColor) return 0;
     int w = Canvas_ImgW ? Canvas_ImgW(canvas, img) : 0;
     int h = Canvas_ImgH ? Canvas_ImgH(canvas, img) : 0;
-    if (!point_on_button(x, y) && !point_on_button(x + w / 2, y + h / 2)) return 0;
+    float k = button_alpha(x, y);
+    if (k >= 1.f) k = button_alpha(x + w / 2, y + h / 2);
+    if (k >= 1.f) return 0;
     float *c = (float *)((uintptr_t)canvas + 0x1fc);
     for (int i = 0; i < 4; i++) saved[i] = c[i];
     unsigned r = (unsigned)(saved[0] * 255.f + .5f), g = (unsigned)(saved[1] * 255.f + .5f),
-             b = (unsigned)(saved[2] * 255.f + .5f), a = (unsigned)(saved[3] * HUD_FADE_ALPHA * 255.f + .5f);
+             b = (unsigned)(saved[2] * 255.f + .5f), a = (unsigned)(saved[3] * k * 255.f + .5f);
     if (r > 255) r = 255; if (g > 255) g = 255; if (b > 255) b = 255; if (a > 255) a = 255;
     Canvas_SetColor(canvas, (r << 24) | (g << 16) | (b << 8) | a);
     return 1;
