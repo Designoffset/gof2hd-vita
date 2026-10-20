@@ -263,16 +263,16 @@ static void controls_init(void) {
 
 enum { HUD_FIRE, HUD_SEC_FIRE, HUD_BOOST, HUD_TURRET, HUD_AUTOPILOT, HUD_JUMP, HUD_ACTION, HUD_PAUSE, HUD_COUNT };
 
+// Same layout as the original gof2-vita port (Xperia Play keys on the Vita):
 static const struct { unsigned int button; int hud; } flight_map[] = {
-    { SCE_CTRL_CROSS,    HUD_FIRE },
-    { SCE_CTRL_RTRIGGER, HUD_FIRE },
-    { SCE_CTRL_SQUARE,   HUD_SEC_FIRE },
-    { SCE_CTRL_CIRCLE,   HUD_BOOST },
-    { SCE_CTRL_TRIANGLE, HUD_TURRET },
-    { SCE_CTRL_LTRIGGER, HUD_AUTOPILOT },
-    { SCE_CTRL_UP,       HUD_JUMP },
-    { SCE_CTRL_SELECT,   HUD_ACTION },
+    { SCE_CTRL_CROSS,    HUD_FIRE },       // Xperia "X"        -> fire
+    { SCE_CTRL_CIRCLE,   HUD_TURRET },     // Xperia "O"/back   -> turret view
+    { SCE_CTRL_SQUARE,   HUD_SEC_FIRE },   // Xperia "[]"       -> secondary weapon
+    { SCE_CTRL_TRIANGLE, HUD_BOOST },      // Xperia "/\"       -> boost
+    { SCE_CTRL_LTRIGGER, HUD_AUTOPILOT },  // L1                -> autopilot
+    { SCE_CTRL_RTRIGGER, HUD_JUMP },       // R1                -> fast forward / jump drive
     { SCE_CTRL_START,    HUD_PAUSE },
+    { SCE_CTRL_SELECT,   HUD_ACTION },
 };
 
 static int hud_pos(int hud, int *x, int *y) {
@@ -341,8 +341,12 @@ static void flight_controls(SceCtrlData *pad, unsigned int pressed, unsigned int
         }
     }
 
-    // Left stick -> drag on the on-screen steering stick
+    // Left stick (or D-pad, like the original port) -> drag on the on-screen steering stick
     float lx = axis(pad->lx), ly = axis(pad->ly);
+    if (pad->buttons & SCE_CTRL_LEFT)  lx = -1.f;
+    if (pad->buttons & SCE_CTRL_RIGHT) lx =  1.f;
+    if (pad->buttons & SCE_CTRL_UP)    ly = -1.f;
+    if (pad->buttons & SCE_CTRL_DOWN)  ly =  1.f;
     int cx = *Globals__touch_stick_x, cy = *Globals__touch_stick_y;
     float r = (float)*Globals__smallButton_dim;
     int x = cx + (int)(lx * r), y = cy + (int)(ly * r);
