@@ -1,3 +1,4 @@
+#include <kubridge.h>
 #include <psp2/io/stat.h>
 #include <psp2/io/fcntl.h>
 /*
@@ -59,6 +60,53 @@ so_module so_fmodex, so_fmodevent;
 // FMOD opens its sound banks (.fev/.fsb) with plain file I/O, so they can't
 // stay inside the APK. Unpack assets/audio/ to DATA_PATH audio/ once; later
 // launches only compare sizes.
+
+// Diagnostic: FMOD returns ERR_INTERNAL (33) from many places. Give every one
+// of them its own code (100 + index) so the log shows which check failed.
+static void fmod_tag_internal_errors(void) {
+    static const uint32_t sites[][2] = {
+    {0x1c094, 0xe3a00021},
+    {0x1c180, 0x03a04021},
+    {0x258a0, 0x03a00021},
+    {0x29164, 0xe3a06021},
+    {0x2a3f8, 0xb3a04021},
+    {0x2a844, 0xe3a00021},
+    {0x2a9cc, 0xe3a00021},
+    {0x2b23c, 0xe3a00021},
+    {0x2e1dc, 0xe3a00021},
+    {0x3a240, 0x13a06021},
+    {0x3aeac, 0xd3a00021},
+    {0x3bcac, 0x03a00021},
+    {0x414b4, 0xe3a00021},
+    {0x49e7c, 0xe3a00021},
+    {0x4b538, 0xe3a03021},
+    {0x4e460, 0x03a00021},
+    {0x53c6c, 0x03a00021},
+    {0x6d0fc, 0xe3a03021},
+    {0x7ac84, 0xe3a00021},
+    {0x7b738, 0x13a09021},
+    {0x7dc38, 0xe3a00021},
+    {0x7ea5c, 0xe3a04021},
+    {0xa1600, 0xe3a00021},
+    {0xa213c, 0x03a05021},
+    {0xa222c, 0x03a05021},
+    {0xb8424, 0xe3a00021},
+    {0xb91cc, 0xe3a00021},
+    {0xb9238, 0xe3a00021},
+    {0xb93a0, 0xe3a00021},
+    {0xb9988, 0xe3a00021},
+    {0xb9c90, 0xe3a00021},
+    {0xb9ccc, 0xe3a00021},
+    {0xb9f3c, 0xe3a00021}
+    };
+    for (int i = 0; i < (int)(sizeof(sites) / sizeof(sites[0])); i++) {
+        uint32_t *p = (uint32_t *)(so_fmodex.text_base + sites[i][0]);
+        if (*p != sites[i][1]) { logv_info("fmod tag: site %d mismatch", i); continue; }
+        uint32_t ins = (sites[i][1] & ~0xffu) | (100 + i);
+        kuKernelCpuUnrestrictedMemcpy(p, &ins, 4);
+    }
+}
+
 void extract_audio(void) {
     unzFile apk = unzOpen(APK_PATH);
     if (!apk) return;
@@ -145,6 +193,7 @@ void soloader_init_all() {
     log_info("so_resolve() passed.");
 
     so_patch();
+    fmod_tag_internal_errors();
     log_info("so_patch() passed.");
 
     so_flush_caches(&so_fmodex);
