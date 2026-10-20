@@ -61,71 +61,9 @@ so_module so_fmodex, so_fmodevent;
 // stay inside the APK. Unpack assets/audio/ to DATA_PATH audio/ once; later
 // launches only compare sizes.
 
-// Diagnostic: FMOD returns ERR_INTERNAL (33) from many places. Route each
-// of those instructions through a small stub in the code cave that records
-// which one ran (fmod_internal_site = index + 1) and then does the original
-// move, so behaviour is unchanged.
+// Set by the FMOD error-site diagnostic used while porting (now removed);
+// still printed with createSoundInternal failures.
 volatile uint32_t fmod_internal_site = 0;
-
-static void fmod_tag_internal_errors(void) {
-    static const uint32_t sites[][2] = {
-    {0x1c094, 0xe3a00021},
-    {0x1c180, 0x03a04021},
-    {0x258a0, 0x03a00021},
-    {0x29164, 0xe3a06021},
-    {0x2a3f8, 0xb3a04021},
-    {0x2a844, 0xe3a00021},
-    {0x2a9cc, 0xe3a00021},
-    {0x2b23c, 0xe3a00021},
-    {0x2e1dc, 0xe3a00021},
-    {0x3a240, 0x13a06021},
-    {0x3aeac, 0xd3a00021},
-    {0x3bcac, 0x03a00021},
-    {0x414b4, 0xe3a00021},
-    {0x49e7c, 0xe3a00021},
-    {0x4b538, 0xe3a03021},
-    {0x4e460, 0x03a00021},
-    {0x53c6c, 0x03a00021},
-    {0x6d0fc, 0xe3a03021},
-    {0x7ac84, 0xe3a00021},
-    {0x7b738, 0x13a09021},
-    {0x7dc38, 0xe3a00021},
-    {0x7ea5c, 0xe3a04021},
-    {0xa1600, 0xe3a00021},
-    {0xa213c, 0x03a05021},
-    {0xa222c, 0x03a05021},
-    {0xb8424, 0xe3a00021},
-    {0xb91cc, 0xe3a00021},
-    {0xb9238, 0xe3a00021},
-    {0xb93a0, 0xe3a00021},
-    {0xb9988, 0xe3a00021},
-    {0xb9c90, 0xe3a00021},
-    {0xb9ccc, 0xe3a00021},
-    {0xb9f3c, 0xe3a00021}
-    };
-    uintptr_t cave = (so_fmodex.cave_head + 3) & ~3u;
-    for (int i = 0; i < (int)(sizeof(sites) / sizeof(sites[0])); i++) {
-        uintptr_t at = so_fmodex.text_base + sites[i][0];
-        uint32_t orig = sites[i][1];
-        if (*(uint32_t *)at != orig) { logv_info("fmod tag: site %d mismatch", i); continue; }
-        if (cave + 32 > so_fmodex.cave_base + so_fmodex.cave_size) { logv_info("fmod tag: cave full at %d", i); break; }
-        uint32_t stub[8];
-        stub[0] = 0xe92d0003;                       // push {r0, r1}
-        stub[1] = 0xe59f0010;                       // ldr r0, [pc, #16]
-        stub[2] = 0xe3a01000 | (i + 1);             // mov r1, #site
-        stub[3] = 0xe5801000;                       // str r1, [r0]
-        stub[4] = 0xe8bd0003;                       // pop {r0, r1}
-        stub[5] = (orig & 0x0fffffff) | 0xe0000000; // mov rX, #33
-        stub[6] = 0xea000000 | (((int32_t)((at + 4) - (cave + 24 + 8)) >> 2) & 0xffffff); // b back
-        stub[7] = (uint32_t)&fmod_internal_site;
-        kuKernelCpuUnrestrictedMemcpy((void *)cave, stub, sizeof(stub));
-        uint32_t br = (orig & 0xf0000000) | 0x0a000000 | (((int32_t)(cave - (at + 8)) >> 2) & 0xffffff);
-        kuKernelCpuUnrestrictedMemcpy((void *)at, &br, 4);
-        cave += sizeof(stub);
-    }
-    kuKernelFlushCaches((void *)so_fmodex.cave_head, cave - so_fmodex.cave_head);
-    so_fmodex.cave_head = cave;
-}
 
 void extract_audio(void) {
     unzFile apk = unzOpen(APK_PATH);
@@ -213,7 +151,6 @@ void soloader_init_all() {
     log_info("so_resolve() passed.");
 
     so_patch();
-    fmod_tag_internal_errors();
     log_info("so_patch() passed.");
 
     so_flush_caches(&so_fmodex);
