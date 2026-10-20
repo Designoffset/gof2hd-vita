@@ -134,6 +134,14 @@ int main(int argc, char* argv[]) {
     setCountry();
     log_info("setCountry() passed");
 
+    // GooglePlayIAP constructor in the repack: Valkyrie, Kaamo Club, Supernova
+    // and the full package are owned from the start (VIP is item 3).
+    extern void (*gof2_iapBoughtPremium)(JNIEnv *, void *, int, int);
+    gof2_iapBoughtPremium = sym("Java_net_fishlabs_googleplay_ToJNI_iapBoughtPremium");
+    for (int i = 0; i < 5; i++)
+        gof2_iapBoughtPremium(&jni, NULL, i, 1);
+    log_info("add-ons unlocked");
+
     // GLViewRenderer.onSurfaceCreated()
     gl_init();
 
