@@ -147,6 +147,78 @@ void __assert2_soloader(const char *file, int line, const char *func, const char
 static int ret_minus1() { return -1; }
 static void *ret_null() { return NULL; }
 
+#include <psp2/audioout.h>
+
+extern JNIEnv jni;
+static int (*fmodGetInfo)(JNIEnv *, void *, int) = NULL;
+static int (*fmodProcess)(JNIEnv *, void *, void *) = NULL;
+static struct JNINativeInterface fmod_env_table;
+static JNIEnv fmod_env;
+
+// fmodProcess asks the "Java" side for the ByteBuffer's address; the buffer
+// we pass already is the address.
+static void *fmod_GetDirectBufferAddress(JNIEnv *env, jobject buf) { return (void *)buf; }
+static jlong fmod_GetDirectBufferCapacity(JNIEnv *env, jobject buf) { return 1 << 20; }
+
+static int fmod_audio_thread(SceSize args, void *argp) {
+    int rate = -1, len = -1, num = -1;
+    for (int i = 0; i < 500 && (rate <= 0 || len <= 0); i++) {
+        rate = fmodGetInfo(&fmod_env, NULL, 0);
+        len = fmodGetInfo(&fmod_env, NULL, 1);
+        num = fmodGetInfo(&fmod_env, NULL, 2);
+        if (rate <= 0 || len <= 0) sceKernelDelayThread(10000);
+    }
+    logv_info("FMOD audio: rate %d, block %d samples, %d blocks", rate, len, num);
+    if (rate <= 0 || len <= 0) return 0;
+
+    // sceAudioOut wants a grain that is a multiple of 64 samples.
+    int grain = (len + 63) & ~63;
+    int port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, grain, rate, SCE_AUDIO_OUT_MODE_STEREO);
+    logv_info("FMOD audio: sceAudioOutOpenPort(grain %d, %d Hz) -> 0x%x", grain, rate, port);
+    if (port < 0) return 0;
+    int vol[2] = { SCE_AUDIO_VOLUME_0DB, SCE_AUDIO_VOLUME_0DB };
+    sceAudioOutSetVolume(port, SCE_AUDIO_VOLUME_FLAG_L_CH | SCE_AUDIO_VOLUME_FLAG_R_CH, vol);
+
+    int16_t *block = calloc(len * 2, sizeof(int16_t));
+    int16_t *out = calloc(grain * 2, sizeof(int16_t));
+    int fill = 0, failures = 0;
+    for (;;) {
+        int r = fmodProcess(&fmod_env, NULL, (void *)block);
+        if (r != 0) {
+            if (failures++ < 5) logv_info("FMOD audio: fmodProcess -> %d", r);
+            memset(block, 0, len * 4);
+        }
+        // feed the FMOD block into grain-sized output buffers
+        int pos = 0;
+        while (pos < len) {
+            int n = len - pos < grain - fill ? len - pos : grain - fill;
+            memcpy(out + fill * 2, block + pos * 2, n * 4);
+            fill += n;
+            pos += n;
+            if (fill == grain) {
+                sceAudioOutOutput(port, out);
+                fill = 0;
+            }
+        }
+    }
+    return 0;
+}
+
+static void fmod_start_audio(void) {
+    static int started = 0;
+    if (started) return;
+    started = 1;
+    fmodGetInfo = (void *)so_symbol(&so_fmodex, "Java_org_fmod_FMODAudioDevice_fmodGetInfo");
+    fmodProcess = (void *)so_symbol(&so_fmodex, "Java_org_fmod_FMODAudioDevice_fmodProcess");
+    if (!fmodGetInfo || !fmodProcess) return;
+    memcpy(&fmod_env_table, (void *)jni, sizeof(fmod_env_table));
+    fmod_env_table.GetDirectBufferAddress = fmod_GetDirectBufferAddress;
+    fmod_env_table.GetDirectBufferCapacity = fmod_GetDirectBufferCapacity;
+    fmod_env = &fmod_env_table;
+    SceUID t = sceKernelCreateThread("FMOD audio", fmod_audio_thread, 0x10000100 - 10, 0x10000, 0, 0, NULL);
+    if (t >= 0) sceKernelStartThread(t, 0, NULL);
+}
+
 // FMOD event system: log what happens and load the banks from the unpacked
 // audio folder (see extract_audio in init.c).
 int FMOD_EventSystem_init_hook(void *es, int maxchannels, unsigned int flags, void *extra, unsigned int eflags) {
@@ -154,6 +226,7 @@ int FMOD_EventSystem_init_hook(void *es, int maxchannels, unsigned int flags, vo
         (void *)so_symbol(&so_fmodevent, "_ZN4FMOD11EventSystem4initEijPvj");
     int r = real(es, maxchannels, flags, extra, eflags);
     logv_info("FMOD EventSystem::init(%d, 0x%x, 0x%x) -> %d", maxchannels, flags, eflags, r);
+    if (r == 0) fmod_start_audio();
     return r;
 }
 
@@ -176,10 +249,11 @@ int FMOD_EventSystem_load_hook(void *es, const char *name, void *info, void **pr
     return r;
 }
 
-// The game creates FMOD's event system without choosing an output, so FMOD
-// picks Android's AudioTrack output, which needs Java code that isn't here.
-// Switch it to the OpenSL ES output (backed by the Vita's audio) right after
-// creation, before the game initialises it.
+// FMOD's OpenSL ES output fails against the Vita's OpenSL library (and then
+// deadlocks tearing it down). Use FMOD's "Audio Track" output instead: on
+// Android a Java thread pulls mixed blocks out of it with fmodProcess() and
+// writes them to an AudioTrack. fmod_audio_thread below plays that role and
+// sends the blocks to sceAudioOut.
 typedef int (*fmod_fn)();
 int FMOD_EventSystem_Create_hook(void **eventsystem) {
     int (*create)(void **) = (void *)so_symbol(&so_fmodevent, "FMOD_EventSystem_Create");
@@ -213,12 +287,12 @@ int FMOD_EventSystem_Create_hook(void **eventsystem) {
         getHandle(sys, 0, i, &h);
         getInfo(sys, h, &type, name, sizeof(name), &ver);
         logv_info("FMOD: output plugin %d: %s (handle %u)", i, name, h);
-        if (strstr(name, "OpenSL")) chosen = h;
+        if (strstr(name, "Audio Track")) chosen = h;
     }
     if (chosen) {
         int rr = setByPlugin(sys, chosen);
         if (getOutput) getOutput(sys, &cur);
-        logv_info("FMOD: switched to OpenSL output -> %d (output type now %d)", rr, cur);
+        logv_info("FMOD: switched to Audio Track output -> %d (output type now %d)", rr, cur);
     }
     return r;
 }
