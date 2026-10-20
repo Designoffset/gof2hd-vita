@@ -1,0 +1,49 @@
+// profile sce_vp_psp2
+
+uniform float4x4 u_WorldMatrix;
+uniform float4x4 u_UvMatrix;
+uniform float4x4 u_FullModelMatrix;
+uniform float3x3 u_ModelMatrix;
+uniform float4 u_LightDirection[2];
+uniform float3 u_EyePosModel;
+uniform float3 u_AmbientColor[2];
+uniform float3 u_DiffuseColor[2];
+uniform float3 u_SpecularColor[2];
+uniform float u_SpecularPower;
+uniform bool u_UVAnimation;
+
+void light(int i, float4 a_position, float3 a_normal, out float3 diffuse, out float3 specular) {
+	float3 lightDirLocal;
+	float nDotL;
+	if (u_LightDirection[i].w == 0.0) {
+		lightDirLocal = u_LightDirection[i].xyz;
+		nDotL = dot(a_normal, lightDirLocal);
+	} else {
+		float4 positionWorld = mul(a_position, u_FullModelMatrix);
+		lightDirLocal = normalize(u_LightDirection[i].xyz - positionWorld.xyz);
+		float3 normalWorld = normalize(mul(a_normal, u_ModelMatrix));
+		nDotL = dot(normalWorld, lightDirLocal);
+	}
+	float3 reflection = normalize(-reflect(lightDirLocal, a_normal));
+	float rDotV = max(0.0, dot(reflection, normalize(u_EyePosModel)));
+	specular = u_SpecularColor[i] * pow(rDotV, u_SpecularPower);
+	diffuse = float3(max(nDotL, 0.0)) * u_DiffuseColor[i] + u_AmbientColor[i];
+}
+
+void main(
+	float4 a_position, float2 a_texCoord, float3 a_normal,
+	float2 out v_texCoord : TEXCOORD0,
+	float3 out v_DiffuseLight0 : TEXCOORD1,
+	float3 out v_DiffuseLight1 : TEXCOORD2,
+	float3 out v_SpecularLight0 : TEXCOORD3,
+	float3 out v_SpecularLight1 : TEXCOORD4,
+	float4 out gl_Position : POSITION
+) {
+	gl_Position = mul(a_position, u_WorldMatrix);
+	if (u_UVAnimation)
+		v_texCoord = mul(float4(a_texCoord.x, a_texCoord.y, 0.0, 1.0), u_UvMatrix).xy;
+	else
+		v_texCoord = a_texCoord;
+	light(0, a_position, a_normal, v_DiffuseLight0, v_SpecularLight0);
+	light(1, a_position, a_normal, v_DiffuseLight1, v_SpecularLight1);
+}

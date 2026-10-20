@@ -1,0 +1,40 @@
+// profile sce_vp_psp2
+
+uniform float4x4 u_ModelViewProjectionMatrix;
+uniform float3x3 u_ModelMatrix;
+uniform float u_fogMaxDist;
+uniform float u_fogMinDist;
+uniform float3 u_eyeposmodel;
+
+float fogFactor(float eyeDist) {
+	float factor = (u_fogMaxDist - eyeDist) / (u_fogMaxDist - u_fogMinDist);
+	return 1.0 - clamp(factor, 0.0, 1.0);
+}
+
+void main(
+	float3 a_position, float2 a_texCoord, float3 a_normal,
+	float2 out v_texCoord : TEXCOORD0,
+	float3 out v_normal : TEXCOORD1,
+	float out v_FogFactor : TEXCOORD2,
+	float3 out DiffuseColor : TEXCOORD3,
+	float4 out gl_Position : POSITION
+) {
+	const float C1 = 0.429043, C2 = 0.511664, C3 = 0.743125, C4 = 0.886227, C5 = 0.247708;
+	const float3 L00  = float3( 0.871297, 0.875222, 0.864470);
+	const float3 L1m1 = float3( 0.175058, 0.245335, 0.312891);
+	const float3 L10  = float3( 0.034675, 0.036107, 0.037362);
+	const float3 L11  = float3(-0.004629,-0.029448,-0.048028);
+	const float3 L2m2 = float3(-0.120535,-0.121160,-0.117507);
+	const float3 L2m1 = float3( 0.003242, 0.003624, 0.007511);
+	const float3 L20  = float3(-0.028667,-0.024926,-0.020998);
+	const float3 L21  = float3(-0.077539,-0.086325,-0.091591);
+	const float3 L22  = float3(-0.161784,-0.191783,-0.219152);
+	gl_Position = mul(float4(a_position, 1.0), u_ModelViewProjectionMatrix);
+	v_texCoord = a_texCoord;
+	v_FogFactor = fogFactor(distance(u_eyeposmodel, a_position));
+	float3 t = normalize(mul(a_normal, u_ModelMatrix));
+	DiffuseColor = C1 * L22 * (t.x * t.x - t.y * t.y) + C3 * L20 * t.z * t.z + C4 * L00 - C5 * L20
+		+ 2.0 * C1 * L2m2 * t.x * t.y + 2.0 * C1 * L21 * t.x * t.z + 2.0 * C1 * L2m1 * t.y * t.z
+		+ 2.0 * C2 * L11 * t.x + 2.0 * C2 * L1m1 * t.y + 2.0 * C2 * L10 * t.z;
+	v_normal = a_normal;
+}

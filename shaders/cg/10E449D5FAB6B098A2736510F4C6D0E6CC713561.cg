@@ -1,0 +1,11 @@
+// profile sce_fp_psp2
+
+uniform sampler2D s_texture_norm;
+uniform sampler2D s_texture_base;
+uniform float4 glColor;
+
+float4 main(float2 v_texCoord : TEXCOORD0, float3 v_lightvec : TEXCOORD1) {
+	float3 normal = normalize(tex2D(s_texture_norm, v_texCoord).rgb * 2.0 - 1.0);
+	float specularIntensity = abs(dot(normalize(v_lightvec), normal));
+	return specularIntensity * tex2D(s_texture_base, v_texCoord) * glColor;
+}

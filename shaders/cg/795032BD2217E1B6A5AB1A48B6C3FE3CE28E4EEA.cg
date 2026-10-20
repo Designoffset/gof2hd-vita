@@ -1,0 +1,41 @@
+// profile sce_vp_psp2
+
+uniform float4x4 u_ModelViewProjectionMatrix;
+uniform float3 u_lightdirmodel[2];
+uniform float3 u_eyeposmodel;
+uniform float u_fogMaxDist;
+uniform float u_fogMinDist;
+
+float3 tbn(float3 t, float3 b, float3 n, float3 v) {
+	// GLSL: mat3(t.x, b.x, n.x, t.y, b.y, n.y, t.z, b.z, n.z) * v
+	return float3(dot(t, v), dot(b, v), dot(n, v));
+}
+
+float fogFactor(float eyeDist) {
+	float factor = (u_fogMaxDist - eyeDist) / (u_fogMaxDist - u_fogMinDist);
+	return 1.0 - clamp(factor, 0.0, 1.0);
+}
+
+void main(
+	float3 a_position, float2 a_texCoord, float3 a_normal, float3 a_tangent, float3 a_bitangent,
+	float2 out v_texCoord : TEXCOORD0,
+	float3 out v_eye_dir : TEXCOORD1,
+	float3 out v_specular_dir0 : TEXCOORD2,
+	float3 out v_specular_dir1 : TEXCOORD3,
+	float3 out v_lightvec0 : TEXCOORD4,
+	float3 out v_lightvec1 : TEXCOORD5,
+	float out v_FogFactor : TEXCOORD6,
+	float4 out gl_Position : POSITION
+) {
+	gl_Position = mul(float4(a_position, 1.0), u_ModelViewProjectionMatrix);
+	v_texCoord = a_texCoord;
+	float3 toEye = u_eyeposmodel - a_position;
+	v_eye_dir = normalize(tbn(a_tangent, a_bitangent, a_normal, toEye));
+	float3 shine = normalize(normalize(toEye) + u_lightdirmodel[0]);
+	v_specular_dir0 = tbn(a_tangent, a_bitangent, a_normal, shine);
+	v_lightvec0 = tbn(a_tangent, a_bitangent, a_normal, u_lightdirmodel[0]);
+	shine = normalize(normalize(toEye) + u_lightdirmodel[1]);
+	v_specular_dir1 = tbn(a_tangent, a_bitangent, a_normal, shine);
+	v_lightvec1 = tbn(a_tangent, a_bitangent, a_normal, u_lightdirmodel[1]);
+	v_FogFactor = fogFactor(distance(u_eyeposmodel, a_position));
+}

@@ -52,15 +52,14 @@ enum { ACTION_DOWN = 0, ACTION_UP = 1, ACTION_MOVE = 2 };
 static void (*handleTouchEvent)(JNIEnv *, void *, int id, int action, int x, int y);
 
 // From patch/controls_fix.c
-void keyPressed(int keycode);
-void keyReleased(int keycode);
-void stickTouch(int pointerId, int action, float nx, float ny);
 int controls_in_space();
+void money_tick(void);
 
 static void setCountry();
-static void handle_touch();
-static void handle_buttons();
-static void handle_stick();
+static int handle_touch();
+static void handle_controls(int screen_touched);
+static void draw_controls_overlay(void);
+static void controls_init(void);
 
 // Watchdog: logs which startup stage the main thread is in, and loading
 // progress, every 5 seconds for the first two minutes.
@@ -110,6 +109,7 @@ int main(int argc, char* argv[]) {
     void (*renderstep)(JNIEnv *, void *, jlong) = sym(JNI_PREFIX "renderstep");
     int  (*getExitFlag)(JNIEnv *, void *) = sym(JNI_PREFIX "getExitFlag");
     handleTouchEvent = sym(JNI_PREFIX "handleTouchEvent");
+    controls_init();
     int  (*getLogoShown)(JNIEnv *, void *) = sym(JNI_PREFIX "getLogoShown");
     int  (*isInMainMenu)(JNIEnv *, void *) = sym(JNI_PREFIX "isInMainMenu");
 
@@ -161,14 +161,14 @@ int main(int argc, char* argv[]) {
     wd_set("render loop");
     while (1) {
         wd_frames++;
-        handle_touch();
-        if (setting_physicalControlsEnabled) {
-            handle_buttons();
-            handle_stick();
-        }
+        int touched = handle_touch();
+        if (setting_physicalControlsEnabled)
+            handle_controls(touched);
 
         uint64_t t0 = sceKernelGetProcessTimeWide();
+        money_tick();
         renderstep(&jni, NULL, (jlong)(t0 / 1000));
+        draw_controls_overlay();
         gl_swap();
 
         // Heartbeat for debugging: once a second for the first minute, then every 10s.
@@ -195,7 +195,7 @@ int main(int argc, char* argv[]) {
 static int touch_down[SCE_TOUCH_MAX_REPORT];
 static int touch_x[SCE_TOUCH_MAX_REPORT], touch_y[SCE_TOUCH_MAX_REPORT];
 
-static void handle_touch() {
+static int handle_touch() {
     SceTouchData touch;
     sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touch, 1);
 
@@ -227,66 +227,209 @@ static void handle_touch() {
             handleTouchEvent(&jni, NULL, id + POINTER_ID_ADD, ACTION_UP, touch_x[id], touch_y[id]);
         }
     }
+    return touch.reportNum > 0;
 }
 
 // --------------------------------------------------------- Physical controls
+//
+// Everything goes through handleTouchEvent, the same path a finger on the
+// screen takes, so the game sees ordinary touches.
+//
+// In flight: left stick steers (drags the on-screen stick), buttons press the
+// HUD buttons.
+// In menus, and in flight while a menu/map/dialogue is open: a cursor.
+//   left stick / D-pad move it, Cross (or R) taps / drags, Circle = back.
 
-static const struct { unsigned int button; int keycode; } button_map[] = {
-    { SCE_CTRL_CROSS,    AKEYCODE_DPAD_CENTER },  // primary fire
-    { SCE_CTRL_RTRIGGER, AKEYCODE_DPAD_CENTER },  // primary fire
-    { SCE_CTRL_SQUARE,   AKEYCODE_BUTTON_X },     // secondary fire
-    { SCE_CTRL_CIRCLE,   AKEYCODE_BUTTON_Y },     // boost
-    { SCE_CTRL_TRIANGLE, AKEYCODE_BACK },         // turret view
-    { SCE_CTRL_LTRIGGER, AKEYCODE_BUTTON_L1 },    // autopilot
-    { SCE_CTRL_UP,       AKEYCODE_BUTTON_R1 },    // fast forward / jump drive
-    { SCE_CTRL_SELECT,   AKEYCODE_BUTTON_SELECT },// action menu
-    { SCE_CTRL_START,    AKEYCODE_BUTTON_START }, // pause
-};
+#include <psp2/kernel/clib.h>
 
-static unsigned int prev_buttons = 0;
+extern int *Globals__turret_view_x, *Globals__turret_view_y;
+extern int *Globals__fire_x, *Globals__fire_y;
+extern int *Globals__sec_fire_x, *Globals__sec_fire_y;
+extern int *Globals__boost_x, *Globals__boost_y;
+extern int *Globals__autopilot_x, *Globals__autopilot_y;
+extern int *Globals__fast_forward_x, *Globals__fast_forward_y;
+extern int *Globals__pause_x, *Globals__pause_y;
+extern int *Globals__action_menu_x, *Globals__action_menu_y;
+extern int *Globals__smallButton_dim;
+extern int *Globals__touch_stick_x, *Globals__touch_stick_y;
+int controls_overlay_open(void);
 
-static void handle_buttons() {
-    SceCtrlData pad;
-    sceCtrlPeekBufferPositive(0, &pad, 1);
+static void (*BackButtonPressed)(JNIEnv *, void *) = NULL;
 
-    for (unsigned i = 0; i < sizeof(button_map) / sizeof(button_map[0]); i++) {
-        unsigned int b = button_map[i].button;
-        int now = (pad.buttons & b) != 0;
-        int before = (prev_buttons & b) != 0;
-        if (now && !before) keyPressed(button_map[i].keycode);
-        if (!now && before) keyReleased(button_map[i].keycode);
-    }
-    prev_buttons = pad.buttons;
+static void controls_init(void) {
+    BackButtonPressed = sym(JNI_PREFIX "BackButtonPressed");
 }
 
-static int stick_active = 0;
+enum { HUD_FIRE, HUD_SEC_FIRE, HUD_BOOST, HUD_TURRET, HUD_AUTOPILOT, HUD_JUMP, HUD_ACTION, HUD_PAUSE, HUD_COUNT };
 
-static void handle_stick() {
-    SceCtrlData pad;
-    sceCtrlPeekBufferPositive(0, &pad, 1);
+static const struct { unsigned int button; int hud; } flight_map[] = {
+    { SCE_CTRL_CROSS,    HUD_FIRE },
+    { SCE_CTRL_RTRIGGER, HUD_FIRE },
+    { SCE_CTRL_SQUARE,   HUD_SEC_FIRE },
+    { SCE_CTRL_CIRCLE,   HUD_BOOST },
+    { SCE_CTRL_TRIANGLE, HUD_TURRET },
+    { SCE_CTRL_LTRIGGER, HUD_AUTOPILOT },
+    { SCE_CTRL_UP,       HUD_JUMP },
+    { SCE_CTRL_SELECT,   HUD_ACTION },
+    { SCE_CTRL_START,    HUD_PAUSE },
+};
 
-    float lx = ((float)pad.lx - 128.f) / 128.f;
-    float ly = ((float)pad.ly - 128.f) / 128.f;
+static int hud_pos(int hud, int *x, int *y) {
+    int *px = NULL, *py = NULL;
+    switch (hud) {
+        case HUD_FIRE:      px = Globals__fire_x;         py = Globals__fire_y; break;
+        case HUD_SEC_FIRE:  px = Globals__sec_fire_x;     py = Globals__sec_fire_y; break;
+        case HUD_BOOST:     px = Globals__boost_x;        py = Globals__boost_y; break;
+        case HUD_TURRET:    px = Globals__turret_view_x;  py = Globals__turret_view_y; break;
+        case HUD_AUTOPILOT: px = Globals__autopilot_x;    py = Globals__autopilot_y; break;
+        case HUD_JUMP:      px = Globals__fast_forward_x; py = Globals__fast_forward_y; break;
+        case HUD_ACTION:    px = Globals__action_menu_x;  py = Globals__action_menu_y; break;
+        case HUD_PAUSE:     px = Globals__pause_x;        py = Globals__pause_y; break;
+    }
+    if (!px || !py) return 0;
+    *x = *px + 4;
+    *y = *py + 4;
+    return 1;
+}
+
+#define HUD_POINTER(i)  (POINTER_ID_ADD + 30 + (i))
+#define CURSOR_POINTER  (POINTER_ID_ADD + 50)
+
+static int hud_down[HUD_COUNT], hud_x[HUD_COUNT], hud_y[HUD_COUNT];
+static int stick_down = 0;
+static float cursor_x = 480.f, cursor_y = 272.f;
+static int cursor_down = 0, cursor_shown = 0;
+static unsigned int prev_buttons = 0;
+static int prev_mode = -1;
+
+static void touch(int id, int action, int x, int y) {
+    handleTouchEvent(&jni, NULL, id, action, x, y);
+}
+
+static void release_all(void) {
+    for (int i = 0; i < HUD_COUNT; i++)
+        if (hud_down[i]) { touch(HUD_POINTER(i), ACTION_UP, hud_x[i], hud_y[i]); hud_down[i] = 0; }
+    if (stick_down) {
+        touch(STICK_POINTER_ID, ACTION_UP, *Globals__touch_stick_x, *Globals__touch_stick_y);
+        stick_down = 0;
+    }
+    if (cursor_down) { touch(CURSOR_POINTER, ACTION_UP, (int)cursor_x, (int)cursor_y); cursor_down = 0; }
+}
+
+static float axis(unsigned char v) {
+    float a = ((float)v - 128.f) / 127.f;
     float dz = setting_leftStickDeadZone;
-    int outside = (lx * lx + ly * ly) > dz * dz;
+    if (a > -dz && a < dz) return 0.f;
+    return a;
+}
 
-    if (!controls_in_space()) {
-        stick_active = 0;
-        return;
+static void flight_controls(SceCtrlData *pad, unsigned int pressed, unsigned int released) {
+    // Buttons -> HUD buttons
+    int want[HUD_COUNT] = {0};
+    for (unsigned i = 0; i < sizeof(flight_map) / sizeof(flight_map[0]); i++)
+        if (pad->buttons & flight_map[i].button) want[flight_map[i].hud] = 1;
+    for (int h = 0; h < HUD_COUNT; h++) {
+        if (want[h] && !hud_down[h]) {
+            if (hud_pos(h, &hud_x[h], &hud_y[h])) {
+                touch(HUD_POINTER(h), ACTION_DOWN, hud_x[h], hud_y[h]);
+                hud_down[h] = 1;
+            }
+        } else if (!want[h] && hud_down[h]) {
+            touch(HUD_POINTER(h), ACTION_UP, hud_x[h], hud_y[h]);
+            hud_down[h] = 0;
+        }
     }
 
-    float nx = (lx + 1.f) / 2.f;
-    float ny = (ly + 1.f) / 2.f;
-
-    if (outside && !stick_active) {
-        stick_active = 1;
-        stickTouch(STICK_POINTER_ID, ACTION_DOWN, nx, ny);
-    } else if (outside) {
-        stickTouch(STICK_POINTER_ID, ACTION_MOVE, nx, ny);
-    } else if (stick_active) {
-        stick_active = 0;
-        stickTouch(STICK_POINTER_ID, ACTION_UP, 0.5f, 0.5f);
+    // Left stick -> drag on the on-screen steering stick
+    float lx = axis(pad->lx), ly = axis(pad->ly);
+    int cx = *Globals__touch_stick_x, cy = *Globals__touch_stick_y;
+    float r = (float)*Globals__smallButton_dim;
+    int x = cx + (int)(lx * r), y = cy + (int)(ly * r);
+    if (lx != 0.f || ly != 0.f) {
+        if (!stick_down) { touch(STICK_POINTER_ID, ACTION_DOWN, cx, cy); stick_down = 1; }
+        touch(STICK_POINTER_ID, ACTION_MOVE, x, y);
+    } else if (stick_down) {
+        touch(STICK_POINTER_ID, ACTION_UP, cx, cy);
+        stick_down = 0;
     }
+}
+
+static void cursor_controls(SceCtrlData *pad, unsigned int pressed, unsigned int released) {
+    float lx = axis(pad->lx), ly = axis(pad->ly);
+    float dx = lx * 9.f, dy = ly * 9.f;
+    if (pad->buttons & SCE_CTRL_LEFT)  dx -= 5.f;
+    if (pad->buttons & SCE_CTRL_RIGHT) dx += 5.f;
+    if (pad->buttons & SCE_CTRL_UP)    dy -= 5.f;
+    if (pad->buttons & SCE_CTRL_DOWN)  dy += 5.f;
+    if (dx != 0.f || dy != 0.f) {
+        cursor_shown = 1;
+        cursor_x += dx; cursor_y += dy;
+        if (cursor_x < 0) cursor_x = 0;
+        if (cursor_x > SCREEN_W - 1) cursor_x = SCREEN_W - 1;
+        if (cursor_y < 0) cursor_y = 0;
+        if (cursor_y > SCREEN_H - 1) cursor_y = SCREEN_H - 1;
+        if (cursor_down) touch(CURSOR_POINTER, ACTION_MOVE, (int)cursor_x, (int)cursor_y);
+    }
+
+    unsigned int tap = SCE_CTRL_CROSS | SCE_CTRL_RTRIGGER;
+    if ((pressed & tap) && !cursor_down) {
+        cursor_shown = 1;
+        cursor_down = 1;
+        touch(CURSOR_POINTER, ACTION_DOWN, (int)cursor_x, (int)cursor_y);
+    } else if (cursor_down && !(pad->buttons & tap)) {
+        cursor_down = 0;
+        touch(CURSOR_POINTER, ACTION_UP, (int)cursor_x, (int)cursor_y);
+    }
+
+    if ((pressed & SCE_CTRL_CIRCLE) && BackButtonPressed)
+        BackButtonPressed(&jni, NULL);
+
+    // In flight with a menu open, Start/Select still close it via their HUD buttons.
+    if (controls_in_space()) {
+        int x, y;
+        if ((pressed & SCE_CTRL_START) && hud_pos(HUD_PAUSE, &x, &y)) {
+            touch(HUD_POINTER(HUD_PAUSE), ACTION_DOWN, x, y);
+            touch(HUD_POINTER(HUD_PAUSE), ACTION_UP, x, y);
+        }
+        if ((pressed & SCE_CTRL_SELECT) && hud_pos(HUD_ACTION, &x, &y)) {
+            touch(HUD_POINTER(HUD_ACTION), ACTION_DOWN, x, y);
+            touch(HUD_POINTER(HUD_ACTION), ACTION_UP, x, y);
+        }
+    }
+}
+
+static void handle_controls(int screen_touched) {
+    SceCtrlData pad;
+    sceClibMemset(&pad, 0, sizeof(pad));
+    sceCtrlPeekBufferPositive(0, &pad, 1);
+    unsigned int pressed = pad.buttons & ~prev_buttons;
+    unsigned int released = ~pad.buttons & prev_buttons;
+    prev_buttons = pad.buttons;
+
+    if (screen_touched) cursor_shown = 0;
+
+    int mode = (controls_in_space() && !controls_overlay_open()) ? 1 : 0;
+    if (mode != prev_mode) {
+        logv_info("controls: %s | fire %d,%d sec %d,%d boost %d,%d turret %d,%d auto %d,%d jump %d,%d action %d,%d pause %d,%d stick %d,%d r=%d",
+                  mode ? "flight" : "cursor",
+                  *Globals__fire_x, *Globals__fire_y, *Globals__sec_fire_x, *Globals__sec_fire_y,
+                  *Globals__boost_x, *Globals__boost_y, *Globals__turret_view_x, *Globals__turret_view_y,
+                  *Globals__autopilot_x, *Globals__autopilot_y, *Globals__fast_forward_x, *Globals__fast_forward_y,
+                  *Globals__action_menu_x, *Globals__action_menu_y, *Globals__pause_x, *Globals__pause_y,
+                  *Globals__touch_stick_x, *Globals__touch_stick_y, *Globals__smallButton_dim);
+        release_all();
+        prev_mode = mode;
+        if (!mode) cursor_shown = 1;
+    }
+    if (mode) flight_controls(&pad, pressed, released);
+    else cursor_controls(&pad, pressed, released);
+}
+
+void gl_draw_cursor(int x, int y, int pressed);
+
+static void draw_controls_overlay(void) {
+    if (prev_mode == 0 && cursor_shown)
+        gl_draw_cursor((int)cursor_x, (int)cursor_y, cursor_down);
 }
 
 // ------------------------------------------------------------------ Language

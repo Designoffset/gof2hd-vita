@@ -1,0 +1,20 @@
+// profile sce_fp_psp2
+
+uniform sampler2D s_texture[2];
+uniform float3 u_AmbientColor;
+uniform float3 u_DiffuseColor;
+uniform float3 u_SpecularColor;
+uniform float u_SpecularPower;
+uniform float u_TexBiasDiffuse;
+uniform float u_TexBiasNormal;
+
+float4 main(float4 v_VertexColor : TEXCOORD0, float2 v_texCoord : TEXCOORD1, float3 v_specular_dir : TEXCOORD2, float3 v_lightvec : TEXCOORD3) {
+	float4 colorTex  = tex2Dbias(s_texture[0], float4(v_texCoord, 0.0, u_TexBiasDiffuse));
+	float4 normalTex = tex2Dbias(s_texture[1], float4(v_texCoord, 0.0, u_TexBiasNormal));
+	float3 n = normalTex.rgb * 2.0 - 1.0;
+	float3 specTex = float3(normalTex.a);
+	float s = pow(saturate(dot(v_specular_dir, n)), u_SpecularPower);
+	float d = saturate(dot(n, v_lightvec));
+	float3 c = v_VertexColor.rgb * ((u_AmbientColor + d * u_DiffuseColor) * colorTex.rgb + (s * u_SpecularColor) * specTex);
+	return float4(c, v_VertexColor.a * colorTex.a);
+}

@@ -21,6 +21,7 @@ extern so_module so_mod;
 #include "patch/quit_fix.c"
 #include "patch/screen_fix.c"
 #include "patch/apk_hook.c"
+#include "patch/money_fix.c"
 
 void so_patch(void) {
     patch__screen_fix();
@@ -29,4 +30,5 @@ void so_patch(void) {
     patch__controls_fix();
     patch__apk_hook();
     patch__apk_paths();
+    patch__money();
 }

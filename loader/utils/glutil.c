@@ -1,3 +1,4 @@
+#include <psp2/io/stat.h>
 #include <stdint.h>
 /*
  * utils/glutil.c
@@ -195,6 +196,13 @@ static GLuint realize(proxy_shader *p, int use_cg) {
             char info[1024] = "";
             glGetShaderInfoLog(r, sizeof(info), NULL, info);
             shader_log("GLSL FAILED %s\n%s\n", p->name, info);
+            // Keep the failing source so a Cg port can be written for it.
+            char path[256];
+            sceIoMkdir(DATA_PATH "glsl_dump", 0777);
+            snprintf(path, sizeof(path), DATA_PATH "glsl_dump/%s.%s", p->name,
+                     p->type == GL_VERTEX_SHADER ? "vert" : "frag");
+            FILE *d = fopen(path, "wb");
+            if (d) { fwrite(p->glsl, 1, strlen(p->glsl), d); fclose(d); }
             glDeleteShader(r);
             return 0;
         }
@@ -576,4 +584,37 @@ EGLBoolean eglDestroySurface (EGLDisplay dpy, EGLSurface surface) {
 
 EGLBoolean eglTerminate(EGLDisplay dpy) {
     return EGL_TRUE;
+}
+
+// Controller cursor for the menus: a white square with a dark outline, drawn
+// with scissored clears after the game's frame (no shader or texture state).
+static void fill_rect(int x, int y, int w, int h, float r, float g, float b) {
+    glScissor(x, 544 - y - h, w, h);
+    glClearColor(r, g, b, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
+void gl_draw_cursor(int x, int y, int pressed) {
+    GLint box[4];
+    GLfloat cc[4];
+    GLboolean cm[4];
+    GLboolean sc = glIsEnabled(GL_SCISSOR_TEST);
+    glGetIntegerv(GL_SCISSOR_BOX, box);
+    glGetFloatv(GL_COLOR_CLEAR_VALUE, cc);
+    glGetBooleanv(GL_COLOR_WRITEMASK, cm);
+    GLint fb = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fb);
+    if (fb) glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glEnable(GL_SCISSOR_TEST);
+
+    fill_rect(x - 7, y - 7, 14, 14, 0.0f, 0.0f, 0.0f);
+    if (pressed) fill_rect(x - 5, y - 5, 10, 10, 1.0f, 0.75f, 0.1f);
+    else         fill_rect(x - 5, y - 5, 10, 10, 1.0f, 1.0f, 1.0f);
+
+    glScissor(box[0], box[1], box[2], box[3]);
+    if (!sc) glDisable(GL_SCISSOR_TEST);
+    glClearColor(cc[0], cc[1], cc[2], cc[3]);
+    glColorMask(cm[0], cm[1], cm[2], cm[3]);
+    if (fb) glBindFramebuffer(GL_FRAMEBUFFER, fb);
 }

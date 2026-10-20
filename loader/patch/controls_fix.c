@@ -49,6 +49,15 @@ int controls_in_space() {
     return GetCurrentApplicationModule(*Globals__appManager) == 2;
 }
 
+// Menus, the star map, hacking, choices and dialogue drawn over the flight view.
+static unsigned char *overlay_flags[5];
+
+int controls_overlay_open(void) {
+    for (int i = 0; i < 5; i++)
+        if (overlay_flags[i] && *overlay_flags[i]) return 1;
+    return 0;
+}
+
 static void * app_manager() {
     return *(void **)(*(void **)(gEngine) + 0x28);
 }
@@ -113,6 +122,12 @@ void patch__controls_fix() {
     Globals__smallButton_dim = (int *) so_symbol(&so_mod, "_ZN7Globals15smallButton_dimE");
     Globals__touch_stick_x = (int *) so_symbol(&so_mod, "_ZN7Globals13touch_stick_xE");
     Globals__touch_stick_y = (int *) so_symbol(&so_mod, "_ZN7Globals13touch_stick_yE");
+
+    overlay_flags[0] = (unsigned char *) so_symbol(&so_mod, "_ZN7Globals15is_menu_visibleE");
+    overlay_flags[1] = (unsigned char *) so_symbol(&so_mod, "_ZN7Globals16isStarMapVisibleE");
+    overlay_flags[2] = (unsigned char *) so_symbol(&so_mod, "_ZN7Globals18is_hacking_visibleE");
+    overlay_flags[3] = (unsigned char *) so_symbol(&so_mod, "_ZN7Globals24is_choice_window_visibleE");
+    overlay_flags[4] = (unsigned char *) so_symbol(&so_mod, "_ZN7Globals26is_dialogue_window_visibleE");
 
     Globals__appManager = (void *) so_symbol(&so_mod, "_ZN7Globals10appManagerE");
     gEngine = (void *) so_symbol(&so_mod, "gEngine");

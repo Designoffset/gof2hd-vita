@@ -1,0 +1,27 @@
+// profile sce_vp_psp2
+
+uniform float4x4 u_ModelViewProjectionMatrix;
+uniform float3 u_lightdirmodel;
+uniform float3 u_eyeposmodel;
+
+float3 tbn(float3 t, float3 b, float3 n, float3 v) {
+	// GLSL: mat3(t.x, b.x, n.x, t.y, b.y, n.y, t.z, b.z, n.z) * v
+	return float3(dot(t, v), dot(b, v), dot(n, v));
+}
+
+void main(
+	float4 a_position, float2 a_texCoord, float3 a_normal, float3 a_tangent, float3 a_bitangent,
+	float2 out v_texCoord : TEXCOORD0,
+	float3 out v_eye_dir : TEXCOORD1,
+	float3 out v_lightvec : TEXCOORD2,
+	float3 out v_specular_dir : TEXCOORD3,
+	float4 out gl_Position : POSITION
+) {
+	gl_Position = mul(a_position, u_ModelViewProjectionMatrix);
+	v_texCoord = a_texCoord;
+	float3 toEye = u_eyeposmodel - a_position.xyz;
+	float3 shine = normalize(normalize(toEye) + u_lightdirmodel);
+	v_specular_dir = tbn(a_tangent, a_bitangent, a_normal, shine);
+	v_lightvec = tbn(a_tangent, a_bitangent, a_normal, u_lightdirmodel);
+	v_eye_dir = normalize(tbn(a_tangent, a_bitangent, a_normal, toEye));
+}

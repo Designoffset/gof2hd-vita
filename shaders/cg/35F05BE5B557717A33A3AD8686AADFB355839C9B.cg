@@ -1,0 +1,39 @@
+// profile sce_fp_psp2
+
+uniform sampler2D s_texture[3];
+uniform float3 u_AmbientColor[2];
+uniform float3 u_DiffuseColor[2];
+uniform float3 u_SpecularColor[2];
+uniform float u_SpecularPower;
+uniform float3 u_RimColor;
+uniform float2 u_texelSize;
+uniform float u_AnimValue;
+uniform float u_CloakRate;
+uniform sampler2D s_texture_base;
+
+float4 main(float2 v_texCoord : TEXCOORD0, float3 v_eye_dir : TEXCOORD1, float3 v_specular_dir0 : TEXCOORD2, float3 v_specular_dir1 : TEXCOORD3, float3 v_lightvec0 : TEXCOORD4, float3 v_lightvec1 : TEXCOORD5, float4 gl_FragCoord : WPOS) {
+	float4 colorTex  = tex2D(s_texture[0], v_texCoord);
+	float4 normalTex = tex2D(s_texture[1], v_texCoord);
+	float4 cloakTex  = tex2D(s_texture[2], v_texCoord);
+	float3 n = normalTex.rgb * 2.0 - 1.0;
+	float3 specTex = float3(normalTex.a);
+	float s1 = pow(saturate(dot(v_specular_dir0, n)), u_SpecularPower);
+	float s2 = pow(saturate(dot(v_specular_dir1, n)), u_SpecularPower);
+	float d1 = saturate(dot(n, v_lightvec0));
+	float d2 = saturate(dot(n, v_lightvec1));
+	float reflectTex = normalTex.a * normalTex.a;
+	float rim = smoothstep(0.8, 1.0, 1.0 - dot(v_eye_dir, n));
+	float3 rimEffect = rim * reflectTex * u_RimColor;
+	float3 color = (u_AmbientColor[0] + u_AmbientColor[1] + d1 * u_DiffuseColor[0] + d2 * u_DiffuseColor[1]) * colorTex.rgb
+		+ (s1 * u_SpecularColor[0] + s2 * u_SpecularColor[1]) * specTex + rimEffect;
+	float2 coord;
+	coord.x = (gl_FragCoord.x + n.x * 100.0 * sin(u_CloakRate)) * u_texelSize.x;
+	coord.y = (gl_FragCoord.y + n.y * 75.0 * cos(u_CloakRate)) * u_texelSize.y;
+	float3 base = tex2D(s_texture_base, coord).rgb;
+	float3 color2 = color;
+	if (cloakTex.r - 0.025 < u_AnimValue)
+		color2 = base + float3(0.6, 0.8, 1.0) * step(u_AnimValue - 0.05, cloakTex.r);
+	float3 c = lerp(color, color2, saturate(u_AnimValue * 4.0)) * step(u_AnimValue, 0.5)
+		+ lerp(color2, base, saturate((u_AnimValue - 0.5) * 4.0)) * step(0.5, u_AnimValue);
+	return float4(c, 1.0);
+}

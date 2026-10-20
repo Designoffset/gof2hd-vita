@@ -1,0 +1,17 @@
+// profile sce_vp_psp2
+
+uniform float4x4 u_ModelViewProjectionMatrix;
+uniform float3 u_eyeposmodel;
+
+void main(
+	float3 a_position, float2 a_texCoord, float3 a_normal,
+	float2 out v_texCoord : TEXCOORD0,
+	float3 out v_eye_dir : TEXCOORD1,
+	float3 out v_normalView : TEXCOORD2,
+	float4 out gl_Position : POSITION
+) {
+	gl_Position = mul(float4(a_position, 1.0), u_ModelViewProjectionMatrix);
+	v_texCoord = a_texCoord;
+	v_normalView = normalize(mul(float4(a_normal, 0.0), u_ModelViewProjectionMatrix).xyz);
+	v_eye_dir = normalize(mul(float4(u_eyeposmodel - a_position, 0.0), u_ModelViewProjectionMatrix).xyz);
+}

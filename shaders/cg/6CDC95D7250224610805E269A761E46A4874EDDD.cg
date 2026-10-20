@@ -1,0 +1,15 @@
+// profile sce_fp_psp2
+
+uniform sampler2D s_texture[2];
+uniform sampler2D s_texture_base;
+uniform float4 glColor;
+uniform float u_TexBias;
+uniform float2 u_texelSize;
+
+float4 main(float2 v_texCoord : TEXCOORD0, float3 v_eye_dir : TEXCOORD1, float4 gl_FragCoord : WPOS) {
+	float4 colorTex = tex2Dbias(s_texture[0], float4(v_texCoord, 0.0, u_TexBias));
+	float3 n = colorTex.rgb * 2.0 - 1.0;
+	float rim = smoothstep(0.0, 1.0, 1.0 - dot(v_eye_dir, n));
+	float2 coord = (gl_FragCoord.xy + (glColor.a * (colorTex.xy - 0.5) * rim) * 180.0) * u_texelSize;
+	return float4(tex2D(s_texture_base, coord).rgb, colorTex.a);
+}

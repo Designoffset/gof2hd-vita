@@ -1,0 +1,20 @@
+// profile sce_fp_psp2
+
+uniform sampler2D s_texture_base;
+uniform float2 u_radial_origin;
+uniform float u_blur_strength;
+
+float4 main(float2 uv : TEXCOORD0) {
+	float2 dir = u_radial_origin - uv;
+	float dist = length(dir);
+	dir = dir / dist;
+	float4 color = tex2D(s_texture_base, uv);
+	float4 sum = color;
+	sum += tex2D(s_texture_base, uv + dir * -0.03);
+	sum += tex2D(s_texture_base, uv + dir * -0.02);
+	sum += tex2D(s_texture_base, uv + dir * -0.01);
+	sum += tex2D(s_texture_base, uv + dir *  0.01);
+	sum += tex2D(s_texture_base, uv + dir *  0.02);
+	sum *= 0.1429;
+	return lerp(color, sum, saturate(dist * u_blur_strength));
+}
