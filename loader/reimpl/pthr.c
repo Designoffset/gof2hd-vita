@@ -152,8 +152,18 @@ int pthread_create_soloader(pthread_t **thread,
     *thread = calloc(1, sizeof(pthread_t));
 
     if (attr != NULL) {
-        pthread_attr_setstacksize(*attr, 350 * 1024);
-        return pthread_create(*thread, *attr, start, param);
+        // Keep the stack size the library asked for when it asked for a
+        // reasonable one: forcing 350 KB on every thread runs the kernel out
+        // of thread-stack memory once FMOD starts its stream threads.
+        size_t want = 0;
+        pthread_attr_getstacksize(*attr, &want);
+        if (want < 128 * 1024) want = 128 * 1024;
+        if (want > 350 * 1024) want = 350 * 1024;
+        pthread_attr_setstacksize(*attr, want);
+        int ret = pthread_create(*thread, *attr, start, param);
+        static int fails = 0;
+        if (ret != 0 && fails < 10) { fails++; sceClibPrintf("pthread_create failed: %d (stack %u)\n", ret, (unsigned)want); logv_info("pthread_create failed: %d (stack %u)", ret, (unsigned)want); }
+        return ret;
     } else {
         pthread_attr_t attrr;
         pthread_attr_init(&attrr);

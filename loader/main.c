@@ -519,11 +519,11 @@ static void handle_controls(int screen_touched) {
     }
     int mode = (controls_in_space() && !paused && !controls_overlay_open()) ? 1 : 0;
     // The HUD is laid out a little after flight starts: scan once a second
-    // until its buttons are found.
+    // (6 times a second) until its buttons are found.
     static int probe_timer = 0;
     if (mode != 1) probe_timer = 0;
     else if (hud_box_count == 0 && probe_timer-- <= 0) {
-        probe_timer = 60;
+        probe_timer = 10;
         if (controls_probe_hud()) assign_roles();
     }
     if (mode != prev_mode) {
