@@ -1,3 +1,4 @@
+#include "utils/screen.h"
 /*
  * falojni_impl.c
  *
@@ -14,8 +15,8 @@
 
 // GOF2 HD 2012 build: methods the native code calls back into Java.
 // DeviceInfo
-jint DeviceInfo_getDisplayWidth(jmethodID id, va_list args) { return 960; }
-jint DeviceInfo_getDisplayHeight(jmethodID id, va_list args) { return 544; }
+jint DeviceInfo_getDisplayWidth(jmethodID id, va_list args) { return GAME_W; }
+jint DeviceInfo_getDisplayHeight(jmethodID id, va_list args) { return GAME_H; }
 jboolean DeviceInfo_isPad(jmethodID id, va_list args) { return JNI_FALSE; }
 
 // NativeFunctionCalls: store / social / web links. None of these exist on the

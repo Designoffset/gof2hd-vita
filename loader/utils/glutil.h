@@ -122,3 +122,5 @@ EGLBoolean eglTerminate(EGLDisplay dpy);
 #define EGL_NONE                          0x3038
 
 #endif // SOLOADER_GLUTIL_H
+
+void gl_create_game_fb(void);

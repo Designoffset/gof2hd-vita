@@ -18,6 +18,7 @@
 
 #include "utils/init.h"
 #include "utils/glutil.h"
+#include "utils/screen.h"
 #include <vitaGL.h>
 #include "utils/logger.h"
 #include "utils/settings.h"
@@ -40,8 +41,9 @@ int _newlib_heap_size_user = 246 * 1024 * 1024;
 so_module so_mod;
 
 #define JNI_PREFIX "Java_net_fishlabs_gof2hdallandroid2012_ToJNI_"
-#define SCREEN_W 960
-#define SCREEN_H 544
+#define SCREEN_W GAME_W
+#define SCREEN_H GAME_H
+#define SC(v) ((v) * GAME_W / 960)   // scale a 960-wide layout value
 
 // Same pointer id offset GOF2's TouchHandler uses
 #define POINTER_ID_ADD 722
@@ -213,9 +215,9 @@ static int handle_touch() {
 
     for (int i = 0; i < touch.reportNum; i++) {
         int id = touch.report[i].id % SCE_TOUCH_MAX_REPORT;
-        // Front panel reports 1920x1088; the game surface is 960x544.
-        int x = touch.report[i].x / 2;
-        int y = touch.report[i].y / 2;
+        // Front panel reports 1920x1088; the game renders at GAME_W x GAME_H.
+        int x = touch.report[i].x * GAME_W / 1920;
+        int y = touch.report[i].y * GAME_H / 1088;
         seen[id] = 1;
 
         if (!touch_down[id]) {
@@ -306,26 +308,26 @@ static void assign_roles(void) {
     for (int i = 0; i < hud_box_count; i++) {
         hud_box *b = &hud_boxes[i];
         int cx = (b->x0 + b->x1) / 2, cy = (b->y0 + b->y1) / 2;
-        if (cx < 480 && cy > 272 && b->n > best_area) { best_area = b->n; role_box[ROLE_STICK] = i; }
+        if (cx < GAME_W / 2 && cy > GAME_H / 2 && b->n > best_area) { best_area = b->n; role_box[ROLE_STICK] = i; }
     }
     // fire: biggest element in the right half, lower part
     best_area = 0;
     for (int i = 0; i < hud_box_count; i++) {
         hud_box *b = &hud_boxes[i];
         int cx = (b->x0 + b->x1) / 2, cy = (b->y0 + b->y1) / 2;
-        if (cx > 480 && cy > 272 && b->n > best_area) { best_area = b->n; role_box[HUD_FIRE] = i; }
+        if (cx > GAME_W / 2 && cy > GAME_H / 2 && b->n > best_area) { best_area = b->n; role_box[HUD_FIRE] = i; }
     }
     // boost: the other lower-left element
     for (int i = 0; i < hud_box_count; i++) {
         hud_box *b = &hud_boxes[i];
         int cx = (b->x0 + b->x1) / 2, cy = (b->y0 + b->y1) / 2;
-        if (i != role_box[ROLE_STICK] && cx < 480 && cy > 272) role_box[HUD_BOOST] = i;
+        if (i != role_box[ROLE_STICK] && cx < GAME_W / 2 && cy > GAME_H / 2) role_box[HUD_BOOST] = i;
     }
     // pause: top-right corner
     for (int i = 0; i < hud_box_count; i++) {
         hud_box *b = &hud_boxes[i];
         int cx = (b->x0 + b->x1) / 2, cy = (b->y0 + b->y1) / 2;
-        if (cx > 800 && cy < 100) role_box[HUD_PAUSE] = i;
+        if (cx > SC(800) && cy < SC(100)) role_box[HUD_PAUSE] = i;
     }
     // the remaining lower-right elements around the fire button, by angle:
     // nearest-left -> secondary, above -> action menu, upper-left -> turret,
@@ -337,11 +339,11 @@ static void assign_roles(void) {
             if (i == fire || i == role_box[HUD_PAUSE]) continue;
             hud_box *b = &hud_boxes[i];
             int cx = (b->x0 + b->x1) / 2, cy = (b->y0 + b->y1) / 2;
-            if (cx < 480) continue;
+            if (cx < GAME_W / 2) continue;
             int dx = cx - fx, dy = cy - fy;
             int role;
-            if (dy > -30 && dx < 0)              role = HUD_SEC_FIRE;
-            else if (dx > -40 && dx < 60 && dy < 0) role = HUD_ACTION;
+            if (dy > -SC(30) && dx < 0)              role = HUD_SEC_FIRE;
+            else if (dx > -SC(40) && dx < SC(60) && dy < 0) role = HUD_ACTION;
             else if (dx < 0 && dy < 0)           role = HUD_TURRET;
             else                                 role = role_box[HUD_AUTOPILOT] < 0 ? HUD_AUTOPILOT : HUD_JUMP;
             if (role_box[role] < 0) role_box[role] = i;
@@ -381,7 +383,7 @@ static int hud_pos(int hud, int *x, int *y) {
 
 static int hud_down[HUD_COUNT], hud_x[HUD_COUNT], hud_y[HUD_COUNT];
 static int stick_down = 0;
-static float cursor_x = 480.f, cursor_y = 272.f;
+static float cursor_x = GAME_W / 2, cursor_y = GAME_H / 2;
 static int cursor_down = 0, cursor_shown = 0;
 static unsigned int prev_buttons = 0;
 static int prev_mode = -1;
@@ -438,8 +440,8 @@ static void flight_controls(SceCtrlData *pad, unsigned int pressed, unsigned int
         cy = (b->y0 + b->y1) / 2;
         r = (float)(b->x1 - b->x0) / 2.f;
     }
-    if (cx == 0 && cy == 0) { cx = 110; cy = 420; }  // stick spot on the default HUD
-    if (r < 20.f) r = 60.f;
+    if (cx == 0 && cy == 0) { cx = SC(110); cy = SC(420); }  // stick spot on the default HUD
+    if (r < SC(20)) r = SC(60);
     int x = cx + (int)(lx * r), y = cy + (int)(ly * r);
     if (lx != 0.f || ly != 0.f) {
         if (!stick_down) { touch(STICK_POINTER_ID, ACTION_DOWN, cx, cy); stick_down = 1; }
@@ -452,11 +454,11 @@ static void flight_controls(SceCtrlData *pad, unsigned int pressed, unsigned int
 
 static void cursor_controls(SceCtrlData *pad, unsigned int pressed, unsigned int released) {
     float lx = axis(pad->lx), ly = axis(pad->ly);
-    float dx = lx * 9.f, dy = ly * 9.f;
-    if (pad->buttons & SCE_CTRL_LEFT)  dx -= 5.f;
-    if (pad->buttons & SCE_CTRL_RIGHT) dx += 5.f;
-    if (pad->buttons & SCE_CTRL_UP)    dy -= 5.f;
-    if (pad->buttons & SCE_CTRL_DOWN)  dy += 5.f;
+    float dx = lx * SC(9.f), dy = ly * SC(9.f);
+    if (pad->buttons & SCE_CTRL_LEFT)  dx -= SC(5.f);
+    if (pad->buttons & SCE_CTRL_RIGHT) dx += SC(5.f);
+    if (pad->buttons & SCE_CTRL_UP)    dy -= SC(5.f);
+    if (pad->buttons & SCE_CTRL_DOWN)  dy += SC(5.f);
     if (dx != 0.f || dy != 0.f) {
         cursor_shown = 1;
         cursor_x += dx; cursor_y += dy;

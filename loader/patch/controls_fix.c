@@ -15,6 +15,7 @@
 #include "AFakeNative/keycodes.h"
 #include "utils/settings.h"
 #include "utils/logger.h"
+#include "utils/screen.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -145,7 +146,7 @@ static void *current_hud(void) {
 // The scan only works once the HUD exists, a little while into each flight.
 // Keep the last good result on the memory card so the buttons work from the
 // first frame next time.
-#define HUD_CACHE DATA_PATH "hud_layout.bin"
+#define HUD_CACHE DATA_PATH "hud_layout_1280.bin"
 
 static void controls_save_hud_cache(void) {
     FILE *f = fopen(HUD_CACHE, "wb");
@@ -184,8 +185,8 @@ int controls_probe_hud(void) {
     int found_count = 0;
     #define hud_boxes found
     #define hud_box_count found_count
-    for (int y = 4; y < 544; y += 8) {
-        for (int x = 4; x < 960; x += 8) {
+    for (int y = 4; y < GAME_H; y += 8) {
+        for (int x = 4; x < GAME_W; x += 8) {
             unsigned int id = Hud_touchedElement(hud, x, y);
             if (!id) continue;
             int i;

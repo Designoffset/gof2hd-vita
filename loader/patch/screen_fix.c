@@ -1,4 +1,5 @@
 #include "utils/logger.h"
+#include "utils/screen.h"
 #include <math.h>
 
 so_hook setGameOrientation_hook;
@@ -9,19 +10,19 @@ void setGameOrientation(void * this, int mode) {
 }
 
 int getDisplayHeight(void * this) {
-    return 544;
+    return GAME_H;
 }
 
 int getDisplayWidth(void * this) {
-    return 960;
+    return GAME_W;
 }
 
 so_hook NewsTicker_Constructor_hook;
 void NewsTicker_Constructor(void* this, int posX, int posY, int width, int param4, int param5) {
     // In some parts of the game, it still thinks of portrait orientation as primary,
     // thus we need to invert to multiply horizontal coordinates by the aspect ratio here
-    int posX_real = (int) floorf((float)posX * (960.f / 544.f));
-    int width_real = (int) floorf((float)width * (960.f / 544.f));
+    int posX_real = (int) floorf((float)posX * ((float)GAME_W / (float)GAME_H));
+    int width_real = (int) floorf((float)width * ((float)GAME_W / (float)GAME_H));
     SO_CONTINUE(void *, NewsTicker_Constructor_hook, this, posX_real, posY, width_real, param4, param5 );
 }
 

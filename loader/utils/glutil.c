@@ -14,12 +14,14 @@
  */
 
 #include "utils/glutil.h"
+#include "utils/screen.h"
 
 #include "utils/utils.h"
 #include "utils/dialog.h"
 #include "utils/logger.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <malloc.h>
 #include <string.h>
 #include <psp2/kernel/sysmem.h>
@@ -35,7 +37,8 @@ void gl_preload() {
 }
 
 void gl_init() {
-    GLboolean ok = vglInitExtended(0, 960, 544, 6 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
+    // The display only receives the scaled game frame, so it needs no MSAA.
+    GLboolean ok = vglInitExtended(0, DISPLAY_W, DISPLAY_H, 6 * 1024 * 1024, SCE_GXM_MULTISAMPLE_NONE);
     logv_info("vglInitExtended -> %d; free KB: vram=%u ram=%u phycont=%u budget=%u external=%u",
               ok, vglMemFree(VGL_MEM_VRAM) / 1024, vglMemFree(VGL_MEM_RAM) / 1024,
               vglMemFree(VGL_MEM_PHYCONT) / 1024, vglMemFree(VGL_MEM_BUDGET) / 1024,
@@ -43,10 +46,55 @@ void gl_init() {
     // Translate+compile GLSL in glCompileShader so failures are reported
     // there; POSTPONED mode compiles inside glLinkProgram and crashes on failure.
     vglSetSemanticBindingMode(VGL_MODE_GLOBAL);
+    gl_create_game_fb();
+}
+
+// The game draws at GAME_W x GAME_H into game_fb; every frame that is scaled
+// down onto the 960x544 display. The game's binds of framebuffer 0 are sent to
+// game_fb (glBindFramebufferHook).
+GLuint game_fb = 0;
+static GLuint game_tex = 0, game_depth = 0;
+
+void gl_create_game_fb(void) {
+    glGenTextures(1, &game_tex);
+    glBindTexture(GL_TEXTURE_2D, game_tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, GAME_W, GAME_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glGenRenderbuffers(1, &game_depth);
+    glBindRenderbuffer(GL_RENDERBUFFER, game_depth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, GAME_W, GAME_H);
+
+    glGenFramebuffers(1, &game_fb);
+    glBindFramebuffer(GL_FRAMEBUFFER, game_fb);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, game_tex, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, game_depth);
+    GLenum st = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    logv_info("game framebuffer %ux%u -> fb %u, status 0x%x", GAME_W, GAME_H, game_fb, st);
+    if (st != GL_FRAMEBUFFER_COMPLETE) {
+        // Fall back to drawing straight to the display.
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        game_fb = 0;
+    }
 }
 
 void gl_swap() {
-    vglSwapBuffers(GL_FALSE);
+    if (game_fb) {
+        GLboolean sc = glIsEnabled(GL_SCISSOR_TEST);
+        if (sc) glDisable(GL_SCISSOR_TEST);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, game_fb);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glBlitFramebuffer(0, 0, GAME_W, GAME_H, 0, 0, DISPLAY_W, DISPLAY_H, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        vglSwapBuffers(GL_FALSE);
+        glBindFramebuffer(GL_FRAMEBUFFER, game_fb);
+        if (sc) glEnable(GL_SCISSOR_TEST);
+    } else {
+        vglSwapBuffers(GL_FALSE);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -317,7 +365,8 @@ void glBindFramebufferHook(GLenum target, GLuint fb) {
         fb_logs++;
     }
     cur_fb = fb;
-    glBindFramebuffer(target, fb);
+    // The game's "screen" is the off-screen game framebuffer.
+    glBindFramebuffer(target, fb == 0 && game_fb ? game_fb : fb);
 }
 
 // Counts clears for the heartbeat stats.
@@ -361,10 +410,10 @@ EGLBoolean eglQuerySurface(EGLDisplay dpy, EGLSurface eglSurface, EGLint attribu
             ret = 1;
             break;
         case EGL_WIDTH:
-            *value = 960;
+            *value = GAME_W;
             break;
         case EGL_HEIGHT:
-            *value = 544;
+            *value = GAME_H;
             break;
         case EGL_TEXTURE_FORMAT:
             *value = 2; // NoTexture = 0, RGB = 1, RGBA = 2
@@ -589,7 +638,7 @@ EGLBoolean eglTerminate(EGLDisplay dpy) {
 // Controller cursor for the menus: a white square with a dark outline, drawn
 // with scissored clears after the game's frame (no shader or texture state).
 static void fill_rect(int x, int y, int w, int h, float r, float g, float b) {
-    glScissor(x, 544 - y - h, w, h);
+    glScissor(x, GAME_H - y - h, w, h);
     glClearColor(r, g, b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 }
@@ -604,19 +653,21 @@ void gl_draw_cursor(int x, int y, int pressed) {
     glGetBooleanv(GL_COLOR_WRITEMASK, cm);
     GLint fb = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fb);
-    if (fb) glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if ((GLuint)fb != game_fb) glBindFramebuffer(GL_FRAMEBUFFER, game_fb);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glEnable(GL_SCISSOR_TEST);
 
-    fill_rect(x - 7, y - 7, 14, 14, 0.0f, 0.0f, 0.0f);
-    if (pressed) fill_rect(x - 5, y - 5, 10, 10, 1.0f, 0.75f, 0.1f);
-    else         fill_rect(x - 5, y - 5, 10, 10, 1.0f, 1.0f, 1.0f);
+    // Sized for the game framebuffer (GAME_W / 960 bigger than display pixels).
+    int o = 7 * GAME_W / 960, in = 5 * GAME_W / 960;
+    fill_rect(x - o, y - o, 2 * o, 2 * o, 0.0f, 0.0f, 0.0f);
+    if (pressed) fill_rect(x - in, y - in, 2 * in, 2 * in, 1.0f, 0.75f, 0.1f);
+    else         fill_rect(x - in, y - in, 2 * in, 2 * in, 1.0f, 1.0f, 1.0f);
 
     glScissor(box[0], box[1], box[2], box[3]);
     if (!sc) glDisable(GL_SCISSOR_TEST);
     glClearColor(cc[0], cc[1], cc[2], cc[3]);
     glColorMask(cm[0], cm[1], cm[2], cm[3]);
-    if (fb) glBindFramebuffer(GL_FRAMEBUFFER, fb);
+    if ((GLuint)fb != game_fb) glBindFramebuffer(GL_FRAMEBUFFER, fb);
 }
 
 // ---------------------------------------------------------------------------
