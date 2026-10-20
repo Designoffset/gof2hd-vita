@@ -274,7 +274,6 @@ static const struct { unsigned int button; int hud; } flight_map[] = {
     { SCE_CTRL_TRIANGLE, HUD_BOOST },      // Xperia "/\"       -> boost
     { SCE_CTRL_LTRIGGER, HUD_AUTOPILOT },  // L1                -> autopilot
     { SCE_CTRL_RTRIGGER, HUD_JUMP },       // R1                -> fast forward / jump drive
-    { SCE_CTRL_START,    HUD_PAUSE },
     { SCE_CTRL_SELECT,   HUD_ACTION },
 };
 
@@ -395,10 +394,6 @@ static void cursor_controls(SceCtrlData *pad, unsigned int pressed, unsigned int
     // In flight with a menu open, Start/Select still close it via their HUD buttons.
     if (controls_in_space()) {
         int x, y;
-        if ((pressed & SCE_CTRL_START) && hud_pos(HUD_PAUSE, &x, &y)) {
-            touch(HUD_POINTER(HUD_PAUSE), ACTION_DOWN, x, y);
-            touch(HUD_POINTER(HUD_PAUSE), ACTION_UP, x, y);
-        }
         if ((pressed & SCE_CTRL_SELECT) && hud_pos(HUD_ACTION, &x, &y)) {
             touch(HUD_POINTER(HUD_ACTION), ACTION_DOWN, x, y);
             touch(HUD_POINTER(HUD_ACTION), ACTION_UP, x, y);
@@ -423,7 +418,22 @@ static void handle_controls(int screen_touched) {
         last_module = module;
     }
 
-    int mode = (controls_in_space() && !controls_overlay_open()) ? 1 : 0;
+    // Start in flight pauses and brings up the cursor for the pause menu;
+    // Start again (or leaving flight) goes back to flight controls.
+    static int paused = 0;
+    if (!controls_in_space()) paused = 0;
+    else if (pressed & SCE_CTRL_START) {
+        if (!paused) {
+            int x, y;
+            if (hud_pos(HUD_PAUSE, &x, &y)) {
+                touch(HUD_POINTER(HUD_PAUSE), ACTION_DOWN, x, y);
+                touch(HUD_POINTER(HUD_PAUSE), ACTION_UP, x, y);
+            }
+        }
+        paused = !paused;
+        pressed &= ~SCE_CTRL_START;
+    }
+    int mode = (controls_in_space() && !paused && !controls_overlay_open()) ? 1 : 0;
     if (mode != prev_mode) {
         logv_info("controls: %s | fire %d,%d sec %d,%d boost %d,%d turret %d,%d auto %d,%d jump %d,%d action %d,%d pause %d,%d stick %d,%d r=%d",
                   mode ? "flight" : "cursor",

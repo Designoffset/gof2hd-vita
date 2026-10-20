@@ -196,6 +196,10 @@ int FMOD_EventSystem_Create_hook(void **eventsystem) {
 
     void *sys = NULL;
     getSystem(*eventsystem, &sys);
+    int (*getVersion)(void *, unsigned int *) = (void *)so_symbol(&so_fmodex, "FMOD_System_GetVersion");
+    unsigned int ver = 0;
+    if (getVersion) getVersion(sys, &ver);
+    logv_info("FMOD version %x", ver);
     int cur = -1;
     if (getOutput) getOutput(sys, &cur);
     int n = 0;
@@ -219,6 +223,13 @@ int FMOD_EventSystem_Create_hook(void **eventsystem) {
     return r;
 }
 
+SLresult slCreateEngine_logged(SLObjectItf *pEngine, SLuint32 numOptions, const SLEngineOption *pEngineOptions,
+                               SLuint32 numInterfaces, const SLInterfaceID *pInterfaceIds, const SLboolean *pInterfaceRequired) {
+    SLresult r = slCreateEngine(pEngine, numOptions, pEngineOptions, numInterfaces, pInterfaceIds, pInterfaceRequired);
+    logv_info("slCreateEngine(%u options, %u interfaces) -> %u", (unsigned)numOptions, (unsigned)numInterfaces, (unsigned)r);
+    return r;
+}
+
 // FMOD dlopen()s libOpenSLES.so and dlsym()s slCreateEngine / SL_IID_*.
 void *dlopen_soloader(const char *filename, int flag) {
     logv_info("dlopen(%s)", filename ? filename : "(null)");
@@ -228,8 +239,10 @@ int dlclose_soloader(void *handle) { return 0; }
 const char *dlerror_soloader(void) { return NULL; }
 void *dlsym_soloader(void *handle, const char *symbol) {
     for (int i = 0; i < default_dynlib_count; i++) {
-        if (strcmp(symbol, default_dynlib[i].symbol) == 0)
+        if (strcmp(symbol, default_dynlib[i].symbol) == 0) {
+            logv_info("dlsym(%s) -> loader", symbol);
             return (void *)default_dynlib[i].func;
+        }
     }
     uintptr_t s;
     if ((s = so_symbol(&so_fmodex, symbol))) return (void *)s;
@@ -486,7 +499,7 @@ so_default_dynlib default_dynlib[] = {
         { "rename", (uintptr_t)&rename },
         { "sin", (uintptr_t)&sin },
         { "sinf", (uintptr_t)&sinf },
-        { "slCreateEngine", (uintptr_t)&slCreateEngine },
+        { "slCreateEngine", (uintptr_t)&slCreateEngine_logged },
         { "snprintf", (uintptr_t)&snprintf },
         { "sprintf", (uintptr_t)&sprintf },
         { "sqrt", (uintptr_t)&sqrt },

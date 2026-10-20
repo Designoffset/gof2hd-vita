@@ -74,7 +74,10 @@ int controls_overlay_open(void) {
             logv_info("controls: %s flag = %d", overlay_name[i], v);
             last[i] = v;
         }
-        if (v == 1) open = 1;
+        // The "menu" flag stays set for the whole flight and dialogue lines
+        // don't stop the ship, so only the star map, hacking and choice
+        // windows switch to the cursor.
+        if (v == 1 && (i == 1 || i == 2 || i == 3)) open = 1;
     }
     return open;
 }
