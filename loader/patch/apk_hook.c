@@ -225,6 +225,16 @@ static int zip_name_locate_retry(void *za, const char *fname, int flags, void *e
                 r = SO_CONTINUE(int, zip_name_locate_hook, za, alt2, flags, error);
                 if (r >= 0) return r;
             }
+
+            // Character portraits: the game asks for X_ipad.aei, the repack
+            // only has the high-resolution X_ipad_large.aei.
+            size_t al = strlen(alt);
+            if (al > 9 && strcmp(alt + al - 9, "_ipad.aei") == 0) {
+                char alt3[512];
+                snprintf(alt3, sizeof(alt3), "%.*s_ipad_large.aei", (int)(al - 9), alt);
+                r = SO_CONTINUE(int, zip_name_locate_hook, za, alt3, flags, error);
+                if (r >= 0) return r;
+            }
         }
     }
     static int misses = 0;
