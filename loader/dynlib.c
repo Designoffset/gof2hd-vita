@@ -250,6 +250,36 @@ int FMOD_EventSystem_load_hook(void *es, const char *name, void *info, void **pr
     return r;
 }
 
+
+// Music and voice are MP3 streams; log how FMOD gets on opening them.
+int FMOD_System_createStream_hook(void *sys, const char *name, unsigned int mode, void *exinfo, void **sound) {
+    int (*real)(void *, const char *, unsigned int, void *, void **) =
+        (void *)so_symbol(&so_fmodex, "_ZN4FMOD6System12createStreamEPKcjP22FMOD_CREATESOUNDEXINFOPPNS_5SoundE");
+    int r = real(sys, name, mode, exinfo, sound);
+    static int n = 0;
+    if (r != 0 || n < 20) { n++; logv_info("FMOD createStream(%s, 0x%x) -> %d", name ? name : "(null)", mode, r); }
+    return r;
+}
+
+int FMOD_SystemI_createSoundInternal_hook(void *sys, const char *name, unsigned int mode, unsigned int bufsize,
+                                          unsigned int buftype, void *exinfo, void **file, int async, void **sound) {
+    int (*real)(void *, const char *, unsigned int, unsigned int, unsigned int, void *, void **, int, void **) =
+        (void *)so_symbol(&so_fmodex, "_ZN4FMOD7SystemI19createSoundInternalEPKcjjjP22FMOD_CREATESOUNDEXINFOPPNS_4FileEbPPNS_6SoundIE");
+    int r = real(sys, name, mode, bufsize, buftype, exinfo, file, async, sound);
+    static int n = 0;
+    if (r != 0 || n < 40) { n++; logv_info("FMOD createSoundInternal(%s, 0x%x, async %d) -> %d", (name && (mode & 0x800) == 0) ? name : "(mem)", mode, async, r); }
+    return r;
+}
+
+int FMOD_Sound_getOpenState_hook(void *snd, int *state, unsigned int *pct, int *starving, int *busy) {
+    int (*real)(void *, int *, unsigned int *, int *, int *) =
+        (void *)so_symbol(&so_fmodex, "_ZN4FMOD5Sound12getOpenStateEP14FMOD_OPENSTATEPjPbS4_");
+    int r = real(snd, state, pct, starving, busy);
+    static int n = 0;
+    if ((r != 0 || (state && *state == 1)) && n < 40) { n++; logv_info("FMOD getOpenState(%p) -> %d state %d", snd, r, state ? *state : -1); }
+    return r;
+}
+
 // FMOD's OpenSL ES output fails against the Vita's OpenSL library (and then
 // deadlocks tearing it down). Use FMOD's "Audio Track" output instead: on
 // Android a Java thread pulls mixed blocks out of it with fmodProcess() and
@@ -616,6 +646,9 @@ so_default_dynlib default_dynlib[] = {
         { "FMOD_EventSystem_Create", (uintptr_t)&FMOD_EventSystem_Create_hook },
         { "_ZN4FMOD11EventSystem4initEijPvj", (uintptr_t)&FMOD_EventSystem_init_hook },
         { "_ZN4FMOD11EventSystem4loadEPKcP19FMOD_EVENT_LOADINFOPPNS_12EventProjectE", (uintptr_t)&FMOD_EventSystem_load_hook },
+        { "_ZN4FMOD6System12createStreamEPKcjP22FMOD_CREATESOUNDEXINFOPPNS_5SoundE", (uintptr_t)&FMOD_System_createStream_hook },
+        { "_ZN4FMOD7SystemI19createSoundInternalEPKcjjjP22FMOD_CREATESOUNDEXINFOPPNS_4FileEbPPNS_6SoundIE", (uintptr_t)&FMOD_SystemI_createSoundInternal_hook },
+        { "_ZN4FMOD5Sound12getOpenStateEP14FMOD_OPENSTATEPjPbS4_", (uintptr_t)&FMOD_Sound_getOpenState_hook },
         { "dlsym", (uintptr_t)&dlsym_soloader },
         { "dlclose", (uintptr_t)&dlclose_soloader },
         { "dlerror", (uintptr_t)&dlerror_soloader },
