@@ -11,14 +11,27 @@ Galaxy on Fire 2 · PS Vita Port
   <a href="#license">License</a>
 </p>
 
-> **This fork: Galaxy on Fire 2 HD (2012 Android build).** The `gof2hd-2012-build`
-> branch retargets the loader to the 2012 *HD* Android release, so the Valkyrie
-> and Supernova add-ons (and the Kaamo Club) are included. On top of the
-> original port it adds: HD rendering at 60 fps (softfp vitaGL fixes, ported Cg
-> shaders), FMOD Ex sound with music and voice acting, Vita button controls
-> mapped onto the 2012 HUD (found at runtime), see-through on-screen controls,
-> corrected character portraits, add-ons unlocked and 999,999,999 credits.
-> You need your own copy of the game. See [BUILDING-GOF2HD.md](BUILDING-GOF2HD.md).
+> **This fork: Galaxy on Fire 2 HD (2012 Android build).** The `main` branch
+> retargets the loader to the 2012 *HD* Android release, so the Valkyrie and
+> Supernova add-ons and the Kaamo Club are included. On top of the original
+> port it adds:
+>
+> - HD graphics at 60 fps (softfp vitaGL fixes, ported Cg shaders, correct lighting)
+> - the game rendered at 1280x725 and scaled to the Vita screen, so the
+>   interface has 720p room (station menus show the system info above the buttons)
+> - FMOD Ex sound: music, voice acting and effects
+> - Vita button controls mapped onto the 2012 touch HUD (found at runtime),
+>   a cursor for menus, see-through on-screen buttons, hidden steering stick
+> - correctly sized and assembled character portraits
+> - all add-ons unlocked and unlimited credits (shown as ∞)
+>
+> You need your own copy of the game. See [BUILDING-GOF2HD.md](BUILDING-GOF2HD.md)
+> for building, and the install notes below.
+>
+> **Install:** copy your game data to `ux0:data/gof2hd/` (`GalaxyOnFire.apk`,
+> plus the resized portraits in `ux0:data/gof2hd/data/textures/`, made with
+> `tools/scale_aei.py` from the APK's `*_ipad_large.aei` portrait textures),
+> then install the VPK with VitaShell. Needs kubridge and libshacccg.suprx.
 
 Galaxy On Fire 2 is a spaceflight simulation video game. The game revolves
 around spaceflight and space combat, set in a universe with multiple star
