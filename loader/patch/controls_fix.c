@@ -121,7 +121,61 @@ void stickTouch(int pointerId, int action, float nx, float ny) {
     AddTouch(pointerId, action, (int)x, (int)y);
 }
 
+// ---- HUD layout probing -------------------------------------------------
+// In the 2012 build the HUD button positions live in the Hud object, not in
+// the Globals the original port read. Hud::touchedElement(x, y) says which
+// element is under a point, so a grid scan finds every button's box.
+
+static void *(*GetApplicationModule)(void *appManager, unsigned int id) = NULL;
+static unsigned int (*Hud_touchedElement)(void *hud, unsigned int x, unsigned int y) = NULL;
+
+typedef struct { unsigned int id; int x0, y0, x1, y1, n; } hud_box;
+hud_box hud_boxes[32];
+int hud_box_count = 0;
+
+static void *current_hud(void) {
+    if (!GetApplicationModule || !Globals__appManager || !*Globals__appManager) return NULL;
+    void *game = GetApplicationModule(*Globals__appManager, 2);
+    if (!game) return NULL;
+    return *(void **)((uintptr_t)game + 0x74);
+}
+
+int controls_probe_hud(void) {
+    void *hud = current_hud();
+    if (!hud || !Hud_touchedElement) return 0;
+    // touchedElement has a side-effect path (it presses TouchButtons) when
+    // this flag is set; only scan when it isn't.
+    if (*(unsigned char *)((uintptr_t)hud + 0x282)) return 0;
+    hud_box_count = 0;
+    for (int y = 4; y < 544; y += 8) {
+        for (int x = 4; x < 960; x += 8) {
+            unsigned int id = Hud_touchedElement(hud, x, y);
+            if (!id) continue;
+            int i;
+            for (i = 0; i < hud_box_count; i++) if (hud_boxes[i].id == id) break;
+            if (i == hud_box_count) {
+                if (hud_box_count == 32) continue;
+                hud_boxes[i] = (hud_box){ id, x, y, x, y, 0 };
+                hud_box_count++;
+            }
+            hud_box *b = &hud_boxes[i];
+            if (x < b->x0) b->x0 = x;
+            if (y < b->y0) b->y0 = y;
+            if (x > b->x1) b->x1 = x;
+            if (y > b->y1) b->y1 = y;
+            b->n++;
+        }
+    }
+    for (int i = 0; i < hud_box_count; i++)
+        logv_info("hud: element 0x%x box %d,%d - %d,%d (center %d,%d, %d hits)", hud_boxes[i].id,
+                  hud_boxes[i].x0, hud_boxes[i].y0, hud_boxes[i].x1, hud_boxes[i].y1,
+                  (hud_boxes[i].x0 + hud_boxes[i].x1) / 2, (hud_boxes[i].y0 + hud_boxes[i].y1) / 2, hud_boxes[i].n);
+    return hud_box_count;
+}
+
 void patch__controls_fix() {
+    GetApplicationModule = (void *) so_symbol(&so_mod, "_ZN11AbyssEngine18ApplicationManager20GetApplicationModuleEj");
+    Hud_touchedElement = (void *) so_symbol(&so_mod, "_ZN3Hud14touchedElementEjj");
     OnTouchBegin = (void *) so_symbol(&so_mod, "_ZN11AbyssEngine18ApplicationManager12OnTouchBeginEiiPv");
     OnTouchEnd = (void *) so_symbol(&so_mod, "_ZN11AbyssEngine18ApplicationManager10OnTouchEndEiiPv");
     GetCurrentApplicationModule = (void *) so_symbol(&so_mod, "_ZNK11AbyssEngine18ApplicationManager27GetCurrentApplicationModuleEv");

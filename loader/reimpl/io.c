@@ -106,7 +106,10 @@ int readdir_r_soloader(DIR *dirp, dirent64_bionic *entry, dirent64_bionic **resu
     return ret;
 }
 
+static const char *proc_path(const char *fname);
+
 FILE *fopen_soloader(char *fname, char *mode) {
+    fname = (char *)proc_path(fname);
     FILE* ret =  fopen(fname, mode);
     // newlib's default 1 KB stdio buffer turns every small read into a
     // separate sceIo call (~1.5 MB/s). The game streams everything out of
@@ -118,7 +121,39 @@ FILE *fopen_soloader(char *fname, char *mode) {
 }
 
 
+// Android's cpufeatures (built into FMOD) reads /proc/cpuinfo and refuses to
+// start the audio engine without ARMv7/VFP/NEON listed. Serve it a Cortex-A9.
+static const char *proc_path(const char *fname) {
+    if (fname && strcmp(fname, "/proc/cpuinfo") == 0) {
+        static int written = 0;
+        const char *path = DATA_PATH "cpuinfo";
+        if (!written) {
+            static const char info[] =
+                "Processor\t: ARMv7 Processor rev 10 (v7l)\n"
+                "processor\t: 0\n"
+                "BogoMIPS\t: 1000.00\n\n"
+                "processor\t: 1\n"
+                "BogoMIPS\t: 1000.00\n\n"
+                "processor\t: 2\n"
+                "BogoMIPS\t: 1000.00\n\n"
+                "Features\t: swp half thumb fastmult vfp edsp neon vfpv3 tls\n"
+                "CPU implementer\t: 0x41\n"
+                "CPU architecture: 7\n"
+                "CPU variant\t: 0x2\n"
+                "CPU part\t: 0xc09\n"
+                "CPU revision\t: 10\n\n"
+                "Hardware\t: PS Vita\n";
+            FILE *f = fopen(path, "wb");
+            if (f) { fwrite(info, 1, sizeof(info) - 1, f); fclose(f); }
+            written = 1;
+        }
+        return path;
+    }
+    return fname;
+}
+
 int open_soloader(char *_fname, int flags) {
+    _fname = (char *)proc_path(_fname);
     flags = oflags_newlib_to_oflags_musl(flags);
     int ret = open(_fname, flags);
     logv_debug("[io] open(%s, %x): %i", _fname, flags, ret);

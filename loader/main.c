@@ -277,7 +277,77 @@ static const struct { unsigned int button; int hud; } flight_map[] = {
     { SCE_CTRL_SELECT,   HUD_ACTION },
 };
 
+typedef struct { unsigned int id; int x0, y0, x1, y1, n; } hud_box;
+extern hud_box hud_boxes[32];
+extern int hud_box_count;
+int controls_probe_hud(void);
+
+// Which probed element plays which role, picked by where it sits on screen
+// (see the HUD layout: stick + boost bottom-left, fire cluster bottom-right,
+// pause top-right).
+static int role_box[HUD_COUNT + 1];
+#define ROLE_STICK HUD_COUNT
+
+static void assign_roles(void) {
+    for (int r = 0; r <= HUD_COUNT; r++) role_box[r] = -1;
+    int best_area = 0;
+    // stick: biggest element in the left half
+    for (int i = 0; i < hud_box_count; i++) {
+        hud_box *b = &hud_boxes[i];
+        int cx = (b->x0 + b->x1) / 2, cy = (b->y0 + b->y1) / 2;
+        if (cx < 480 && cy > 272 && b->n > best_area) { best_area = b->n; role_box[ROLE_STICK] = i; }
+    }
+    // fire: biggest element in the right half, lower part
+    best_area = 0;
+    for (int i = 0; i < hud_box_count; i++) {
+        hud_box *b = &hud_boxes[i];
+        int cx = (b->x0 + b->x1) / 2, cy = (b->y0 + b->y1) / 2;
+        if (cx > 480 && cy > 272 && b->n > best_area) { best_area = b->n; role_box[HUD_FIRE] = i; }
+    }
+    // boost: the other lower-left element
+    for (int i = 0; i < hud_box_count; i++) {
+        hud_box *b = &hud_boxes[i];
+        int cx = (b->x0 + b->x1) / 2, cy = (b->y0 + b->y1) / 2;
+        if (i != role_box[ROLE_STICK] && cx < 480 && cy > 272) role_box[HUD_BOOST] = i;
+    }
+    // pause: top-right corner
+    for (int i = 0; i < hud_box_count; i++) {
+        hud_box *b = &hud_boxes[i];
+        int cx = (b->x0 + b->x1) / 2, cy = (b->y0 + b->y1) / 2;
+        if (cx > 800 && cy < 100) role_box[HUD_PAUSE] = i;
+    }
+    // the remaining lower-right elements around the fire button, by angle:
+    // nearest-left -> secondary, above -> action menu, upper-left -> turret,
+    // anything else -> autopilot / jump in order found
+    int fire = role_box[HUD_FIRE];
+    if (fire >= 0) {
+        int fx = (hud_boxes[fire].x0 + hud_boxes[fire].x1) / 2, fy = (hud_boxes[fire].y0 + hud_boxes[fire].y1) / 2;
+        for (int i = 0; i < hud_box_count; i++) {
+            if (i == fire || i == role_box[HUD_PAUSE]) continue;
+            hud_box *b = &hud_boxes[i];
+            int cx = (b->x0 + b->x1) / 2, cy = (b->y0 + b->y1) / 2;
+            if (cx < 480) continue;
+            int dx = cx - fx, dy = cy - fy;
+            int role;
+            if (dy > -30 && dx < 0)              role = HUD_SEC_FIRE;
+            else if (dx > -40 && dx < 60 && dy < 0) role = HUD_ACTION;
+            else if (dx < 0 && dy < 0)           role = HUD_TURRET;
+            else                                 role = role_box[HUD_AUTOPILOT] < 0 ? HUD_AUTOPILOT : HUD_JUMP;
+            if (role_box[role] < 0) role_box[role] = i;
+        }
+    }
+    static const char *names[] = { "fire", "secondary", "boost", "turret", "autopilot", "jump", "action", "pause", "stick" };
+    for (int r = 0; r <= HUD_COUNT; r++)
+        if (role_box[r] >= 0) logv_info("hud: %s -> element 0x%x", names[r], hud_boxes[role_box[r]].id);
+}
+
 static int hud_pos(int hud, int *x, int *y) {
+    if (hud_box_count && role_box[hud] >= 0) {
+        hud_box *b = &hud_boxes[role_box[hud]];
+        *x = (b->x0 + b->x1) / 2;
+        *y = (b->y0 + b->y1) / 2;
+        return 1;
+    }
     int *px = NULL, *py = NULL;
     switch (hud) {
         case HUD_FIRE:      px = Globals__fire_x;         py = Globals__fire_y; break;
@@ -351,6 +421,14 @@ static void flight_controls(SceCtrlData *pad, unsigned int pressed, unsigned int
     if (pad->buttons & SCE_CTRL_DOWN)  ly =  1.f;
     int cx = *Globals__touch_stick_x, cy = *Globals__touch_stick_y;
     float r = (float)*Globals__smallButton_dim;
+    if (hud_box_count && role_box[ROLE_STICK] >= 0) {
+        hud_box *b = &hud_boxes[role_box[ROLE_STICK]];
+        cx = (b->x0 + b->x1) / 2;
+        cy = (b->y0 + b->y1) / 2;
+        r = (float)(b->x1 - b->x0) / 2.f;
+    }
+    if (cx == 0 && cy == 0) { cx = 110; cy = 420; }  // stick spot on the default HUD
+    if (r < 20.f) r = 60.f;
     int x = cx + (int)(lx * r), y = cy + (int)(ly * r);
     if (lx != 0.f || ly != 0.f) {
         if (!stick_down) { touch(STICK_POINTER_ID, ACTION_DOWN, cx, cy); stick_down = 1; }
@@ -434,6 +512,9 @@ static void handle_controls(int screen_touched) {
         pressed &= ~SCE_CTRL_START;
     }
     int mode = (controls_in_space() && !paused && !controls_overlay_open()) ? 1 : 0;
+    if (mode == 1 && prev_mode != 1) {
+        if (controls_probe_hud()) assign_roles();
+    }
     if (mode != prev_mode) {
         logv_info("controls: %s | fire %d,%d sec %d,%d boost %d,%d turret %d,%d auto %d,%d jump %d,%d action %d,%d pause %d,%d stick %d,%d r=%d",
                   mode ? "flight" : "cursor",
