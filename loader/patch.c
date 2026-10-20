@@ -35,4 +35,5 @@ void so_patch(void) {
     patch__money();
     patch__hud_fade();
     patch__station_fix();
+    patch__credits_display();
 }

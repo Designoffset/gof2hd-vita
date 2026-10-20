@@ -74,3 +74,27 @@ void patch__station_fix(void) {
     Canvas_TextHeight = (void *)so_symbol(&so_mod, "_ZN11AbyssEngine11PaintCanvas13GetTextHeightEj");
     Canvas_ImgHeight = (void *)so_symbol(&so_mod, "_ZN11AbyssEngine11PaintCanvas16GetImage2DHeightEj");
 }
+
+/*
+ * Credits are pinned at 999,999,999 (money_fix.c). Show that balance as an
+ * infinity sign instead of the number. Layout::formatCredits also formats
+ * prices and rewards, so only the exact pinned value is replaced.
+ */
+typedef void (*FormatCredits_t)(void *out, void *layout, int credits);
+static FormatCredits_t orig_formatCredits;
+static void (*String_from_u16)(void *self, const unsigned short *s, int reverse);
+
+static void formatCredits_hook(void *out, void *layout, int credits) {
+    static const unsigned short infinity[] = { 0x221E, 0 };
+    if (credits == 999999999 && String_from_u16) {
+        String_from_u16(out, infinity, 0);  // copies; the flag means "reverse"
+        return;
+    }
+    orig_formatCredits(out, layout, credits);
+}
+
+void patch__credits_display(void) {
+    String_from_u16 = (void *)so_symbol(&so_mod, "_ZN11AbyssEngine6StringC1EPKtb");
+    if (!String_from_u16) String_from_u16 = (void *)so_symbol(&so_mod, "_ZN11AbyssEngine6StringC2EPKtb");
+    redirect(0x2128b4, "_ZN6Layout13formatCreditsEi", (void **)&orig_formatCredits, formatCredits_hook);
+}
