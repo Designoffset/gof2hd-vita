@@ -14,6 +14,7 @@
 
 #include "AFakeNative/keycodes.h"
 #include "utils/settings.h"
+#include "utils/logger.h"
 
 void ** Globals__appManager;
 void ** gEngine;
@@ -53,12 +54,29 @@ int controls_in_space() {
 }
 
 // Menus, the star map, hacking, choices and dialogue drawn over the flight view.
-static unsigned char *overlay_flags[5];
+static void *overlay_flags[5];
+static const int overlay_size[5] = { 4, 1, 4, 4, 4 };
+static const char *overlay_name[5] = { "menu", "starmap", "hacking", "choice", "dialogue" };
 
+static int overlay_value(int i) {
+    if (!overlay_flags[i]) return 0;
+    return overlay_size[i] == 1 ? *(unsigned char *)overlay_flags[i] : *(int *)overlay_flags[i];
+}
+
+// Only an exact 1 counts as "open": a flag that holds anything else is not a
+// plain bool and is ignored. Changes are logged.
 int controls_overlay_open(void) {
-    for (int i = 0; i < 5; i++)
-        if (overlay_flags[i] && *overlay_flags[i]) return 1;
-    return 0;
+    static int last[5] = { -1, -1, -1, -1, -1 };
+    int open = 0;
+    for (int i = 0; i < 5; i++) {
+        int v = overlay_value(i);
+        if (v != last[i]) {
+            logv_info("controls: %s flag = %d", overlay_name[i], v);
+            last[i] = v;
+        }
+        if (v == 1) open = 1;
+    }
+    return open;
 }
 
 static void * app_manager() {
