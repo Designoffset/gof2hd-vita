@@ -142,6 +142,11 @@ static void *current_hud(void) {
 
 int controls_probe_hud(void) {
     void *hud = current_hud();
+    static int logged = 0;
+    if (logged < 5) {
+        logged++;
+        logv_info("hud: probe hud=%p flag=%d", hud, hud ? *(unsigned char *)((uintptr_t)hud + 0x282) : -1);
+    }
     if (!hud || !Hud_touchedElement) return 0;
     // touchedElement has a side-effect path (it presses TouchButtons) when
     // this flag is set; only scan when it isn't.

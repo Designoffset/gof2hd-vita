@@ -240,7 +240,8 @@ int FMOD_EventSystem_load_hook(void *es, const char *name, void *info, void **pr
     base = base ? base + 1 : name;
     if (base && strstr(base, ".fev")) {
         if (setMediaPath) setMediaPath(es, DATA_PATH "audio/");
-        snprintf(path, sizeof(path), DATA_PATH "audio/%s", base);
+        // with the media path set, FMOD prefixes it to the name itself
+        snprintf(path, sizeof(path), "%s", base);
     } else {
         snprintf(path, sizeof(path), "%s", name ? name : "");
     }
