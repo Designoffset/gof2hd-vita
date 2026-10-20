@@ -82,6 +82,12 @@ static int watchdog_thread(SceSize args, void *argp) {
         logv_info("watchdog: t=%llus stage=%s for %llus frames=%u read=%lluKB in %u reads, %u seeks",
                   now / 1000000, (const char *)wd_stage, (now - wd_since) / 1000000, f,
                   io_bytes_read / 1024, io_reads, io_seeks);
+        // Startup normally takes ~25s; if it hangs, crash so the Vita writes a
+        // core dump with every thread's position.
+        if (f == 0 && now - wd_since > 50ull * 1000000) {
+            log_info("watchdog: startup hung, crashing for a core dump");
+            *(volatile int *)0 = 0xDEAD;
+        }
     }
     return 0;
 }
