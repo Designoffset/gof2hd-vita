@@ -265,9 +265,11 @@ int FMOD_SystemI_createSoundInternal_hook(void *sys, const char *name, unsigned 
                                           unsigned int buftype, void *exinfo, void **file, int async, void **sound) {
     int (*real)(void *, const char *, unsigned int, unsigned int, unsigned int, void *, void **, int, void **) =
         (void *)so_symbol(&so_fmodex, "_ZN4FMOD7SystemI19createSoundInternalEPKcjjjP22FMOD_CREATESOUNDEXINFOPPNS_4FileEbPPNS_6SoundIE");
+    extern volatile uint32_t fmod_internal_site;
+    fmod_internal_site = 0;
     int r = real(sys, name, mode, bufsize, buftype, exinfo, file, async, sound);
     static int n = 0;
-    if (r != 0 || n < 40) { n++; logv_info("FMOD createSoundInternal(%s, 0x%x, async %d) -> %d", (name && (mode & 0x800) == 0) ? name : "(mem)", mode, async, r); }
+    if (r != 0 || n < 40) { n++; logv_info("FMOD createSoundInternal(%s, 0x%x, async %d) -> %d (site %u)", (name && (mode & 0x800) == 0) ? name : "(mem)", mode, async, r, (unsigned)fmod_internal_site); }
     return r;
 }
 
