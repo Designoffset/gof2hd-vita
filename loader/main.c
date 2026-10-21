@@ -557,6 +557,8 @@ static void handle_controls(int screen_touched) {
         release_all();
         prev_mode = mode;
     }
+    void controls_flight_tick(int flight, unsigned int pressed);
+    controls_flight_tick(mode, pressed);
     if (mode) flight_controls(&pad, pressed, released);
     else cursor_controls(&pad, pressed, released);
 }

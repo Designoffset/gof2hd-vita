@@ -159,6 +159,56 @@ static void *current_hud(void) {
     return *(void **)((uintptr_t)game + 0x74);
 }
 
+// MGame::switchCamera cycles 0 chase -> 1 turret -> 3 free look -> 0 (the
+// HUD camera button, mapped to Circle). In free look the stick turns the
+// camera instead of the ship, so flight can start with the controls seemingly
+// dead until Circle is pressed. Put each new flight back on the chase camera.
+static void (*MGame_switchCamera)(void *game, int cam) = NULL;
+static uintptr_t MGame_vtable;
+
+static void *current_game(void) {
+    if (!GetApplicationModule || !Globals__appManager || !*Globals__appManager) return NULL;
+    void *game = GetApplicationModule(*Globals__appManager, 2);
+    if (!game) return NULL;
+    if (MGame_vtable && *(uintptr_t *)game != MGame_vtable) {
+        static int warned = 0;
+        if (!warned++) logv_info("controls: module 2 vtable %p != MGame %p", *(void **)game, (void *)MGame_vtable);
+        return NULL;
+    }
+    return game;
+}
+
+#define MG_B(g, o) (*(unsigned char *)((uintptr_t)(g) + (o)))
+#define MG_I(g, o) (*(int *)((uintptr_t)(g) + (o)))
+
+void controls_flight_tick(int flight, unsigned int pressed) {
+    static int was_flight = 0, last_cam = -1, settle = 0;
+    void *g = flight ? current_game() : NULL;
+    if (!g) { was_flight = 0; return; }
+    if (!was_flight) { was_flight = 1; settle = 30; }
+    int cam = MG_I(g, 0x14);
+    if (cam != last_cam) {
+        logv_info("controls: camera %d -> %d", last_cam, cam);
+        last_cam = cam;
+    }
+    // Half a second into the flight (after the launch sequence has set up
+    // its camera), switch away from turret/free look once.
+    if (settle > 0 && --settle == 0 && cam != 0 && MGame_switchCamera &&
+        !MG_B(g, 0x5d) && !MG_B(g, 0x5f)) {
+        logv_info("controls: flight started on camera %d, switching to chase", cam);
+        MGame_switchCamera(g, 0);
+    }
+    if (pressed) {
+        static int n = 0;
+        if (n < 40) {
+            n++;
+            logv_info("controls: press %08x cam %d hudbits %08x menu %d cut %d dead %d first %p hudmenu %d",
+                      pressed, MG_I(g, 0x14), MG_I(g, 0xf8), MG_B(g, 0x5d), MG_B(g, 0x5f),
+                      MG_B(g, 0x60), *(void **)((uintptr_t)g + 0xc0), MG_B(g, 0xd6));
+        }
+    }
+}
+
 // The scan only works once the HUD exists, a little while into each flight.
 // Keep the last good result on the memory card so the buttons work from the
 // first frame next time.
@@ -239,6 +289,8 @@ int controls_probe_hud(void) {
 }
 
 void patch__controls_fix() {
+    MGame_switchCamera = (void *) so_symbol(&so_mod, "_ZN5MGame12switchCameraEi");
+    { uintptr_t vt = so_symbol(&so_mod, "_ZTV5MGame"); MGame_vtable = vt ? vt + 8 : 0; }
     GetApplicationModule = (void *) so_symbol(&so_mod, "_ZN11AbyssEngine18ApplicationManager20GetApplicationModuleEj");
     Hud_touchedElement = (void *) so_symbol(&so_mod, "_ZN3Hud14touchedElementEjj");
     OnTouchBegin = (void *) so_symbol(&so_mod, "_ZN11AbyssEngine18ApplicationManager12OnTouchBeginEiiPv");
