@@ -291,8 +291,7 @@ static const struct { unsigned int button; int hud; } flight_map[] = {
     { SCE_CTRL_UP,       HUD_AUTOPILOT },  // D-pad up          -> autopilot
     { SCE_CTRL_DOWN,     HUD_JUMP },       // D-pad down        -> fast forward / jump drive
     { SCE_CTRL_RIGHT,    HUD_ACTION },     // D-pad right       -> action menu
-    // L / R and the right stick: barrel rolls and throttle (controls_flight_tick);
-    // Select (held) shows the controls card.
+    // L / R and the right stick: barrel rolls and throttle (controls_flight_tick).
 };
 
 typedef struct { unsigned int id; int x0, y0, x1, y1, n; } hud_box;
@@ -309,6 +308,15 @@ static int role_box[HUD_COUNT + 1];
 
 static void assign_roles(void) {
     for (int r = 0; r <= HUD_COUNT; r++) role_box[r] = -1;
+    // The boost button (0x2) is only drawn while boost is ready, so a scan
+    // can miss it. Keep its spot from a full scan so Triangle never lands
+    // on a neighbouring button (autopilot) instead.
+    {
+        int have = 0;
+        for (int i = 0; i < hud_box_count; i++) if (hud_boxes[i].id == 0x2) have = 1;
+        if (!have && hud_box_count < 32)
+            hud_boxes[hud_box_count++] = (hud_box){ 0x2, 156, 628, 308, 700, 1 };
+    }
     int best_area = 0;
     // stick: biggest element in the left half
     for (int i = 0; i < hud_box_count; i++) {
@@ -347,6 +355,13 @@ static void assign_roles(void) {
     for (unsigned k = 0; k < sizeof(by_id) / sizeof(by_id[0]); k++)
         for (int i = 0; i < hud_box_count; i++)
             if (hud_boxes[i].id == by_id[k].id) role_box[by_id[k].role] = i;
+    // A role guessed by position must not sit on a button that belongs to
+    // another role.
+    for (int r = 0; r <= HUD_COUNT; r++) {
+        if (role_box[r] < 0) continue;
+        for (unsigned k = 0; k < sizeof(by_id) / sizeof(by_id[0]); k++)
+            if (hud_boxes[role_box[r]].id == by_id[k].id && by_id[k].role != r) { role_box[r] = -1; break; }
+    }
     // the remaining lower-right elements around the fire button, by angle:
     // nearest-left -> secondary, above -> action menu, upper-left -> turret,
     // anything else -> autopilot / jump in order found
@@ -575,9 +590,7 @@ static void handle_controls(int screen_touched) {
 
 void gl_draw_cursor(int x, int y, int pressed);
 
-void gl_draw_controls_card(void);
 static void draw_controls_overlay(void) {
-    if (prev_buttons & SCE_CTRL_SELECT) { gl_draw_controls_card(); return; }
     if (prev_mode == 0 && cursor_shown)
         gl_draw_cursor((int)cursor_x, (int)cursor_y, cursor_down);
 }
