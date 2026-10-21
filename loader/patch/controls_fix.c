@@ -57,30 +57,46 @@ int controls_in_space() {
 }
 
 // Menus, the star map, hacking, choices and dialogue drawn over the flight view.
-static void *overlay_flags[5];
-static const int overlay_size[5] = { 4, 1, 4, 4, 4 };
-static const char *overlay_name[5] = { "menu", "starmap", "hacking", "choice", "dialogue" };
+#define OVERLAYS 6
+static void *overlay_flags[OVERLAYS];
+static const int overlay_size[OVERLAYS] = { 4, 1, 4, 4, 4, 4 };
+static const char *overlay_name[OVERLAYS] = { "menu", "starmap", "hacking", "choice", "dialogue", "submenu" };
 
 static int overlay_value(int i) {
     if (!overlay_flags[i]) return 0;
-    return overlay_size[i] == 1 ? *(unsigned char *)overlay_flags[i] : *(int *)overlay_flags[i];
+    int v = overlay_size[i] == 1 ? *(unsigned char *)overlay_flags[i] : *(int *)overlay_flags[i];
+    // subMenuIndex is -1 when no in-game sub menu is open (the game's own
+    // IsInGameSubMenuActive test); report it as a 0/1 flag like the rest.
+    if (i == 5) return v != -1;
+    return v;
 }
 
 // Only an exact 1 counts as "open": a flag that holds anything else is not a
 // plain bool and is ignored. Changes are logged.
+//
+// The pause menu and the in-flight sub menus (is_menu_visible, subMenuIndex)
+// only count once they have been seen closed during this flight: in some
+// sessions they are left set for the whole flight, and a flag that never
+// closes must not take the ship controls away. Dialogue lines don't stop the
+// ship, so they never switch to the cursor.
 int controls_overlay_open(void) {
-    static int last[5] = { -1, -1, -1, -1, -1 };
+    static int last[OVERLAYS] = { -1, -1, -1, -1, -1, -1 };
+    static int armed[OVERLAYS];
+    static int was_space = 0;
+    int space = controls_in_space();
+    if (space && !was_space)
+        for (int i = 0; i < OVERLAYS; i++) armed[i] = 0;
+    was_space = space;
     int open = 0;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < OVERLAYS; i++) {
         int v = overlay_value(i);
         if (v != last[i]) {
             logv_info("controls: %s flag = %d", overlay_name[i], v);
             last[i] = v;
         }
-        // The "menu" flag stays set for the whole flight and dialogue lines
-        // don't stop the ship, so only the star map, hacking and choice
-        // windows switch to the cursor.
-        if (v == 1 && (i == 1 || i == 2 || i == 3)) open = 1;
+        if (v != 1) { armed[i] = 1; continue; }
+        if (i == 1 || i == 2 || i == 3) open = 1;
+        else if ((i == 0 || i == 5) && armed[i]) open = 1;
     }
     return open;
 }
@@ -156,8 +172,13 @@ static void controls_save_hud_cache(void) {
     fclose(f);
 }
 
+// A layout scanned on a Vita ships inside the VPK, so the buttons work from
+// the first second of the first flight; a fresh scan replaces it in ux0:data.
+#define HUD_DEFAULT "app0:hud_layout_1280.bin"
+
 int controls_load_hud_cache(void) {
     FILE *f = fopen(HUD_CACHE, "rb");
+    if (!f) f = fopen(HUD_DEFAULT, "rb");
     if (!f) return 0;
     int n = 0;
     if (fread(&n, sizeof(int), 1, f) == 1 && n > 0 && n <= 32 &&
@@ -250,6 +271,7 @@ void patch__controls_fix() {
     overlay_flags[2] = (unsigned char *) so_symbol(&so_mod, "_ZN7Globals18is_hacking_visibleE");
     overlay_flags[3] = (unsigned char *) so_symbol(&so_mod, "_ZN7Globals24is_choice_window_visibleE");
     overlay_flags[4] = (unsigned char *) so_symbol(&so_mod, "_ZN7Globals26is_dialogue_window_visibleE");
+    overlay_flags[5] = (unsigned char *) so_symbol(&so_mod, "_ZN7Globals12subMenuIndexE");
 
     ndk_getCurrentApplicationModule = (void *) so_symbol(&so_mod, "ndk_getCurrentApplicationModule");
     Globals__appManager = (void *) so_symbol(&so_mod, "_ZN7Globals10appManagerE");

@@ -174,6 +174,7 @@ vita_create_vpk(${VITA_VPKNAME}.vpk ${VITA_TITLEID} eboot.bin
                 ${CMAKE_SOURCE_DIR}/livearea/template.xml sce_sys/livearea/contents/template.xml
                 ${CMAKE_SOURCE_DIR}/shaders/cg shaders
                 ${CMAKE_SOURCE_DIR}/shaders/glsl glsl
+                ${CMAKE_SOURCE_DIR}/data/hud_layout_1280.bin hud_layout_1280.bin
                 
                 )
 

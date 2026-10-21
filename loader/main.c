@@ -402,11 +402,16 @@ static void release_all(void) {
     if (cursor_down) { touch(CURSOR_POINTER, ACTION_UP, (int)cursor_x, (int)cursor_y); cursor_down = 0; }
 }
 
+// Small dead zone, then rescaled so the stick still reaches full deflection
+// at the edge (no jump from 0 to the dead-zone value).
 static float axis(unsigned char v) {
     float a = ((float)v - 128.f) / 127.f;
+    if (a > 1.f) a = 1.f;
+    if (a < -1.f) a = -1.f;
     float dz = setting_leftStickDeadZone;
+    if (dz > 0.15f) dz = 0.15f;
     if (a > -dz && a < dz) return 0.f;
-    return a;
+    return a > 0 ? (a - dz) / (1.f - dz) : (a + dz) / (1.f - dz);
 }
 
 static void flight_controls(SceCtrlData *pad, unsigned int pressed, unsigned int released) {
@@ -516,22 +521,18 @@ static void handle_controls(int screen_touched) {
         last_module = module;
     }
 
-    // Start in flight pauses and brings up the cursor for the pause menu;
-    // Start again (or leaving flight) goes back to flight controls.
-    static int paused = 0;
-    if (!controls_in_space()) paused = 0;
-    else if (pressed & SCE_CTRL_START) {
-        if (!paused) {
-            int x, y;
-            if (hud_pos(HUD_PAUSE, &x, &y)) {
-                touch(HUD_POINTER(HUD_PAUSE), ACTION_DOWN, x, y);
-                touch(HUD_POINTER(HUD_PAUSE), ACTION_UP, x, y);
-            }
+    // Start in flight taps the game's pause button. The controls follow the
+    // game: cursor while its menu/star map/choice window is open, flight
+    // controls again as soon as it closes, however it was closed.
+    if (controls_in_space() && (pressed & SCE_CTRL_START)) {
+        int x, y;
+        if (hud_pos(HUD_PAUSE, &x, &y)) {
+            touch(HUD_POINTER(HUD_PAUSE), ACTION_DOWN, x, y);
+            touch(HUD_POINTER(HUD_PAUSE), ACTION_UP, x, y);
         }
-        paused = !paused;
         pressed &= ~SCE_CTRL_START;
     }
-    int mode = (controls_in_space() && !paused && !controls_overlay_open()) ? 1 : 0;
+    int mode = (controls_in_space() && !controls_overlay_open()) ? 1 : 0;
     // The HUD is laid out a little after flight starts: scan once a second
     // (6 times a second) until its buttons are found.
     if (!hud_cache_loaded) {
