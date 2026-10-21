@@ -140,7 +140,9 @@ static int Image2DCreate_hook(void *canvas, unsigned short id, unsigned int *out
 
 void patch__hud_fade(void) {
     Engine_clampTextures = (unsigned char *)so_symbol(&so_mod, "_ZN11AbyssEngine6Engine13clampTexturesE");
+#ifndef GAME_OFFSCREEN
     redirect(0x211840, "_ZN11AbyssEngine11PaintCanvas13Image2DCreateEtRj", (void **)&orig_Image2DCreate, Image2DCreate_hook);
+#endif
     Canvas_SetColor = (void *)so_symbol(&so_mod, "_ZN11AbyssEngine11PaintCanvas8SetColorEj");
     Canvas_ImgW = (void *)so_symbol(&so_mod, "_ZN11AbyssEngine11PaintCanvas15GetImage2DWidthEj");
     Canvas_ImgH = (void *)so_symbol(&so_mod, "_ZN11AbyssEngine11PaintCanvas16GetImage2DHeightEj");

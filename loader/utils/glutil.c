@@ -37,7 +37,13 @@ void gl_preload() {
 }
 
 void gl_init() {
-    GLboolean ok = vglInitExtended(0, DISPLAY_W, DISPLAY_H, 6 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
+    GLboolean ok = vglInitExtended(0, DISPLAY_W, DISPLAY_H, 6 * 1024 * 1024,
+#ifdef GAME_OFFSCREEN
+                                   SCE_GXM_MULTISAMPLE_NONE  // the scaled-down 1280x725 frame is already smoothed
+#else
+                                   SCE_GXM_MULTISAMPLE_4X
+#endif
+                                   );
     logv_info("vglInitExtended -> %d; free KB: vram=%u ram=%u phycont=%u budget=%u external=%u",
               ok, vglMemFree(VGL_MEM_VRAM) / 1024, vglMemFree(VGL_MEM_RAM) / 1024,
               vglMemFree(VGL_MEM_PHYCONT) / 1024, vglMemFree(VGL_MEM_BUDGET) / 1024,
