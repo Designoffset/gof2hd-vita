@@ -230,16 +230,11 @@ void controls_flight_tick(int flight, unsigned int pressed, SceCtrlData *pad) {
     void *ego = *(void **)((uintptr_t)g + 0x58);
     int free_to_fly = ego && !MG_B(g, 0x5d) && !MG_B(g, 0x5f) && !MG_B(g, 0x60);
     if (free_to_fly && pad) {
-        // L / R: barrel roll left / right (the game's swipe maneuver: 1 = left,
-        // 2 = right). Right stick flicked left/right does the same.
-        static int rx_latch = 0;
-        float rx = rstick(pad->rx), ry = rstick(pad->ry);
+        // L / R: barrel roll left / right (the game's swipe maneuver: 1 = left, 2 = right).
+        float ry = rstick(pad->ry);
         int roll = 0;
         if (pressed & SCE_CTRL_LTRIGGER) roll = 1;
         if (pressed & SCE_CTRL_RTRIGGER) roll = 2;
-        if (rx < -0.6f && rx_latch != -1) { roll = 1; rx_latch = -1; }
-        else if (rx > 0.6f && rx_latch != 1) { roll = 2; rx_latch = 1; }
-        else if (rx > -0.3f && rx < 0.3f) rx_latch = 0;
         if (roll && Ego_initManeuver) Ego_initManeuver(ego, roll);
         // Right stick up/down: throttle (full range in about a second).
         if (ry != 0.f && Ego_changeThrust) {
