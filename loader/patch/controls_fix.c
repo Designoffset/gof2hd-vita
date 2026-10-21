@@ -17,6 +17,7 @@
 #include "utils/logger.h"
 #include "utils/screen.h"
 #include <string.h>
+#include <psp2/ctrl.h>
 #include <stdio.h>
 
 void ** Globals__appManager;
@@ -181,11 +182,38 @@ static void *current_game(void) {
 #define MG_B(g, o) (*(unsigned char *)((uintptr_t)(g) + (o)))
 #define MG_I(g, o) (*(int *)((uintptr_t)(g) + (o)))
 
-void controls_flight_tick(int flight, unsigned int pressed) {
+// Globals::options+0x11 picks the steering source in MGame::OnUpdate:
+// 0 = accelerometer (tilt), anything else = the on-screen analog stick.
+// The Vita feeds no tilt, so with tilt selected the ship can't be steered
+// at all (only the free-look camera moves). Always use the stick.
+static unsigned char *Globals__options;
+static void (*Ego_initManeuver)(void *ego, int kind);
+static void (*Ego_changeThrust)(void *ego, float delta);
+static void (*Ego_throttleChanged)(void *ego);
+
+static float rstick(unsigned char v) {
+    float a = ((float)v - 128.f) / 127.f;
+    if (a > -0.25f && a < 0.25f) return 0.f;
+    if (a > 1.f) a = 1.f;
+    if (a < -1.f) a = -1.f;
+    return a;
+}
+
+void controls_flight_tick(int flight, unsigned int pressed, SceCtrlData *pad) {
     static int was_flight = 0, last_cam = -1, settle = 0;
     void *g = flight ? current_game() : NULL;
     if (!g) { was_flight = 0; return; }
-    if (!was_flight) { was_flight = 1; settle = 30; }
+    if (!was_flight) {
+        was_flight = 1; settle = 30;
+        if (Globals__options)
+            logv_info("controls: options %02x %02x %02x %02x | 10:%02x 11:%02x 12:%02x 13:%02x",
+                      Globals__options[0xc], Globals__options[0xd], Globals__options[0xe], Globals__options[0xf],
+                      Globals__options[0x10], Globals__options[0x11], Globals__options[0x12], Globals__options[0x13]);
+    }
+    if (Globals__options && Globals__options[0x11] == 0) {
+        Globals__options[0x11] = 1;
+        log_info("controls: steering was set to tilt, switched to the analog stick");
+    }
     int cam = MG_I(g, 0x14);
     if (cam != last_cam) {
         logv_info("controls: camera %d -> %d", last_cam, cam);
@@ -198,13 +226,41 @@ void controls_flight_tick(int flight, unsigned int pressed) {
         logv_info("controls: flight started on camera %d, switching to chase", cam);
         MGame_switchCamera(g, 0);
     }
+
+    void *ego = *(void **)((uintptr_t)g + 0x58);
+    int free_to_fly = ego && !MG_B(g, 0x5d) && !MG_B(g, 0x5f) && !MG_B(g, 0x60);
+    if (free_to_fly && pad) {
+        // L / R: barrel roll left / right (the game's swipe maneuver: 1 = left,
+        // 2 = right). Right stick flicked left/right does the same.
+        static int rx_latch = 0;
+        float rx = rstick(pad->rx), ry = rstick(pad->ry);
+        int roll = 0;
+        if (pressed & SCE_CTRL_LTRIGGER) roll = 1;
+        if (pressed & SCE_CTRL_RTRIGGER) roll = 2;
+        if (rx < -0.6f && rx_latch != -1) { roll = 1; rx_latch = -1; }
+        else if (rx > 0.6f && rx_latch != 1) { roll = 2; rx_latch = 1; }
+        else if (rx > -0.3f && rx < 0.3f) rx_latch = 0;
+        if (roll && Ego_initManeuver) Ego_initManeuver(ego, roll);
+        // Right stick up/down: throttle (full range in about a second).
+        if (ry != 0.f && Ego_changeThrust) {
+            Ego_changeThrust(ego, -ry / 60.f);
+            if (Ego_throttleChanged) Ego_throttleChanged(ego);
+        }
+    }
+
     if (pressed) {
         static int n = 0;
         if (n < 40) {
             n++;
-            logv_info("controls: press %08x cam %d hudbits %08x menu %d cut %d dead %d first %p hudmenu %d",
+            void *hud = *(void **)((uintptr_t)g + 0x74);
+            logv_info("controls: press %08x cam %d hudbits %08x menu %d cut %d first %p stick %d,%d c %d,%d r %d",
                       pressed, MG_I(g, 0x14), MG_I(g, 0xf8), MG_B(g, 0x5d), MG_B(g, 0x5f),
-                      MG_B(g, 0x60), *(void **)((uintptr_t)g + 0xc0), MG_B(g, 0xd6));
+                      *(void **)((uintptr_t)g + 0xc0),
+                      hud ? *(unsigned short *)((uintptr_t)hud + 0x41e) : -1,
+                      hud ? *(unsigned short *)((uintptr_t)hud + 0x420) : -1,
+                      hud ? *(unsigned short *)((uintptr_t)hud + 0x424) : -1,
+                      hud ? *(unsigned short *)((uintptr_t)hud + 0x426) : -1,
+                      hud ? *(int *)((uintptr_t)hud + 0x4e0) : -1);
         }
     }
 }
@@ -289,6 +345,10 @@ int controls_probe_hud(void) {
 }
 
 void patch__controls_fix() {
+    Globals__options = (unsigned char *) so_symbol(&so_mod, "_ZN7Globals7optionsE");
+    Ego_initManeuver = (void *) so_symbol(&so_mod, "_ZN9PlayerEgo12initManeuverEi");
+    Ego_changeThrust = (void *) so_symbol(&so_mod, "_ZN9PlayerEgo12changeThrustEf");
+    Ego_throttleChanged = (void *) so_symbol(&so_mod, "_ZN9PlayerEgo15throttleChangedEv");
     MGame_switchCamera = (void *) so_symbol(&so_mod, "_ZN5MGame12switchCameraEi");
     { uintptr_t vt = so_symbol(&so_mod, "_ZTV5MGame"); MGame_vtable = vt ? vt + 8 : 0; }
     GetApplicationModule = (void *) so_symbol(&so_mod, "_ZN11AbyssEngine18ApplicationManager20GetApplicationModuleEj");

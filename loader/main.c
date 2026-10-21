@@ -288,8 +288,9 @@ static const struct { unsigned int button; int hud; } flight_map[] = {
     { SCE_CTRL_CIRCLE,   HUD_TURRET },     // Xperia "O"/back   -> turret view
     { SCE_CTRL_SQUARE,   HUD_SEC_FIRE },   // Xperia "[]"       -> secondary weapon
     { SCE_CTRL_TRIANGLE, HUD_BOOST },      // Xperia "/\"       -> boost
-    { SCE_CTRL_LTRIGGER, HUD_AUTOPILOT },  // L1                -> autopilot
-    { SCE_CTRL_RTRIGGER, HUD_JUMP },       // R1                -> fast forward / jump drive
+    { SCE_CTRL_UP,       HUD_AUTOPILOT },  // D-pad up          -> autopilot
+    { SCE_CTRL_DOWN,     HUD_JUMP },       // D-pad down        -> fast forward / jump drive
+    // L / R and the right stick: barrel rolls and throttle (controls_flight_tick)
     { SCE_CTRL_SELECT,   HUD_ACTION },
 };
 
@@ -439,8 +440,6 @@ static void flight_controls(SceCtrlData *pad, unsigned int pressed, unsigned int
     float lx = axis(pad->lx), ly = axis(pad->ly);
     if (pad->buttons & SCE_CTRL_LEFT)  lx = -1.f;
     if (pad->buttons & SCE_CTRL_RIGHT) lx =  1.f;
-    if (pad->buttons & SCE_CTRL_UP)    ly = -1.f;
-    if (pad->buttons & SCE_CTRL_DOWN)  ly =  1.f;
     int cx = *Globals__touch_stick_x, cy = *Globals__touch_stick_y;
     float r = (float)*Globals__smallButton_dim;
     if (hud_box_count && role_box[ROLE_STICK] >= 0) {
@@ -561,8 +560,8 @@ static void handle_controls(int screen_touched) {
         release_all();
         prev_mode = mode;
     }
-    void controls_flight_tick(int flight, unsigned int pressed);
-    controls_flight_tick(mode, pressed);
+    void controls_flight_tick(int flight, unsigned int pressed, SceCtrlData *pad);
+    controls_flight_tick(mode, pressed, &pad);
     if (mode) flight_controls(&pad, pressed, released);
     else cursor_controls(&pad, pressed, released);
 }
