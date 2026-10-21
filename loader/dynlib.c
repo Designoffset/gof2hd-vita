@@ -86,6 +86,8 @@ extern void * _ZdaPv;
 extern void * _ZdlPv;
 extern void * _Znaj;
 extern void * _Znwj;
+void *mw_malloc(size_t); void *mw_calloc(size_t, size_t); void *mw_realloc(void *, size_t);
+void *mw_memalign(size_t, size_t); void *mw_new(size_t); void *mw_new_array(size_t);
 
 extern const char *BIONIC_ctype_;
 extern const short *BIONIC_tolower_tab_;
@@ -445,8 +447,8 @@ so_default_dynlib default_dynlib[] = {
         { "SL_IID_VOLUME", (uintptr_t)&SL_IID_VOLUME },
         { "_ZdaPv", (uintptr_t)&_ZdaPv },
         { "_ZdlPv", (uintptr_t)&_ZdlPv },
-        { "_Znaj", (uintptr_t)&_Znaj },
-        { "_Znwj", (uintptr_t)&_Znwj },
+        { "_Znaj", (uintptr_t)&mw_new_array },
+        { "_Znwj", (uintptr_t)&mw_new },
         { "__aeabi_atexit", (uintptr_t)&__aeabi_atexit },
         { "__aeabi_d2f", (uintptr_t)&__aeabi_d2f },
         { "__aeabi_d2iz", (uintptr_t)&__aeabi_d2iz },
@@ -496,7 +498,7 @@ so_default_dynlib default_dynlib[] = {
         { "acos", (uintptr_t)&acos },
         { "atan", (uintptr_t)&atan },
         { "atoi", (uintptr_t)&atoi },
-        { "calloc", (uintptr_t)&calloc },
+        { "calloc", (uintptr_t)&mw_calloc },
         { "chmod", (uintptr_t)&chmod },
         { "clearerr", (uintptr_t)&clearerr },
         { "close", (uintptr_t)&close_soloader },
@@ -580,7 +582,7 @@ so_default_dynlib default_dynlib[] = {
         { "glVertexAttribPointer", (uintptr_t)&glVertexAttribPointer },
         { "glViewport", (uintptr_t)&glViewportHook },
         { "localtime", (uintptr_t)&localtime },
-        { "malloc", (uintptr_t)&malloc },
+        { "malloc", (uintptr_t)&mw_malloc },
         { "memchr", (uintptr_t)&memchr },
         { "memcmp", (uintptr_t)&memcmp },
         { "memcpy", (uintptr_t)&memcpy },
@@ -601,7 +603,7 @@ so_default_dynlib default_dynlib[] = {
         { "pthread_mutex_lock", (uintptr_t)&pthread_mutex_lock_soloader },
         { "pthread_mutex_unlock", (uintptr_t)&pthread_mutex_unlock_soloader },
         { "qsort", (uintptr_t)&qsort },
-        { "realloc", (uintptr_t)&realloc },
+        { "realloc", (uintptr_t)&mw_realloc },
         { "remove", (uintptr_t)&remove },
         { "rename", (uintptr_t)&rename },
         { "sin", (uintptr_t)&sin },
@@ -688,7 +690,7 @@ so_default_dynlib default_dynlib[] = {
         { "strncpy", (uintptr_t)&strncpy },
         { "strtol", (uintptr_t)&strtol },
         { "memmem", (uintptr_t)&memmem },
-        { "memalign", (uintptr_t)&memalign },
+        { "memalign", (uintptr_t)&mw_memalign },
         { "unlink", (uintptr_t)&unlink },
         { "utime", (uintptr_t)&ret0 },
         { "chown", (uintptr_t)&ret0 },

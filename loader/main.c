@@ -187,9 +187,13 @@ int main(int argc, char* argv[]) {
         static unsigned int frame = 0;
         frame++;
         if ((frame <= 3600 && frame % 60 == 0) || frame % 600 == 0 || frame <= 3) {
-            logv_info("heartbeat frame=%u logoShown=%d mainMenu=%d inSpace=%d renderstep=%llums",
+            extern size_t memwatch_used(void), memwatch_peak(void), memwatch_arena(void);
+            size_t used = memwatch_used();
+            logv_info("heartbeat frame=%u logoShown=%d mainMenu=%d inSpace=%d renderstep=%llums heap=%uKB peak=%uKB arena=%uKB vram=%uKB glram=%uKB",
                       frame, getLogoShown(&jni, NULL), isInMainMenu(&jni, NULL), controls_in_space(),
-                      (sceKernelGetProcessTimeWide() - t0) / 1000);
+                      (sceKernelGetProcessTimeWide() - t0) / 1000,
+                      (unsigned)(used / 1024), (unsigned)(memwatch_peak() / 1024), (unsigned)(memwatch_arena() / 1024),
+                      (unsigned)(vglMemFree(VGL_MEM_VRAM) / 1024), (unsigned)(vglMemFree(VGL_MEM_RAM) / 1024));
         }
         // GL activity for exactly one frame right after each heartbeat
         if ((frame <= 3600 && frame % 60 == 0) || frame % 600 == 0)

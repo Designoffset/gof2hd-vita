@@ -54,6 +54,7 @@ add_executable(${CMAKE_PROJECT_NAME}
                loader/reimpl/io.c
                loader/reimpl/log.c
                loader/reimpl/mem.c
+               loader/reimpl/memwatch.c
                loader/reimpl/pthr.c
                loader/reimpl/sys.c
                loader/utils/init.c
