@@ -290,8 +290,9 @@ static const struct { unsigned int button; int hud; } flight_map[] = {
     { SCE_CTRL_TRIANGLE, HUD_BOOST },      // Xperia "/\"       -> boost
     { SCE_CTRL_UP,       HUD_AUTOPILOT },  // D-pad up          -> autopilot
     { SCE_CTRL_DOWN,     HUD_JUMP },       // D-pad down        -> fast forward / jump drive
-    // L / R and the right stick: barrel rolls and throttle (controls_flight_tick)
-    { SCE_CTRL_SELECT,   HUD_ACTION },
+    { SCE_CTRL_RIGHT,    HUD_ACTION },     // D-pad right       -> action menu
+    // L / R and the right stick: barrel rolls and throttle (controls_flight_tick);
+    // Select (held) shows the controls card.
 };
 
 typedef struct { unsigned int id; int x0, y0, x1, y1, n; } hud_box;
@@ -334,6 +335,18 @@ static void assign_roles(void) {
         int cx = (b->x0 + b->x1) / 2, cy = (b->y0 + b->y1) / 2;
         if (cx > SC(800) && cy < SC(100)) role_box[HUD_PAUSE] = i;
     }
+    // Elements whose meaning is known from MGame::OnTouchBegin/OnTouchEnd
+    // take their role by id: 0x2 boost, 0x4 action menu, 0x8 secondary,
+    // 0x10 fire, 0x40 autopilot, 0x80 camera, 0x100 fast forward, 0x1 pause.
+    // (0x4000000.. are docking-target buttons, not the action menu.)
+    static const struct { unsigned id; int role; } by_id[] = {
+        { 0x10, HUD_FIRE }, { 0x8, HUD_SEC_FIRE }, { 0x2, HUD_BOOST }, { 0x80, HUD_TURRET },
+        { 0x40, HUD_AUTOPILOT }, { 0x100, HUD_JUMP }, { 0x4, HUD_ACTION }, { 0x1, HUD_PAUSE },
+        { 0x20, ROLE_STICK },
+    };
+    for (unsigned k = 0; k < sizeof(by_id) / sizeof(by_id[0]); k++)
+        for (int i = 0; i < hud_box_count; i++)
+            if (hud_boxes[i].id == by_id[k].id) role_box[by_id[k].role] = i;
     // the remaining lower-right elements around the fire button, by angle:
     // nearest-left -> secondary, above -> action menu, upper-left -> turret,
     // anything else -> autopilot / jump in order found
@@ -345,6 +358,10 @@ static void assign_roles(void) {
             hud_box *b = &hud_boxes[i];
             int cx = (b->x0 + b->x1) / 2, cy = (b->y0 + b->y1) / 2;
             if (cx < GAME_W / 2) continue;
+            if (hud_boxes[i].id >= 0x4000000) continue;   // docking targets
+            int known = 0;
+            for (int r = 0; r <= HUD_COUNT; r++) if (role_box[r] == i) known = 1;
+            if (known) continue;
             int dx = cx - fx, dy = cy - fy;
             int role;
             if (dy > -SC(30) && dx < 0)              role = HUD_SEC_FIRE;
@@ -438,8 +455,6 @@ static void flight_controls(SceCtrlData *pad, unsigned int pressed, unsigned int
 
     // Left stick (or D-pad, like the original port) -> drag on the on-screen steering stick
     float lx = axis(pad->lx), ly = axis(pad->ly);
-    if (pad->buttons & SCE_CTRL_LEFT)  lx = -1.f;
-    if (pad->buttons & SCE_CTRL_RIGHT) lx =  1.f;
     int cx = *Globals__touch_stick_x, cy = *Globals__touch_stick_y;
     float r = (float)*Globals__smallButton_dim;
     if (hud_box_count && role_box[ROLE_STICK] >= 0) {
@@ -495,14 +510,6 @@ static void cursor_controls(SceCtrlData *pad, unsigned int pressed, unsigned int
     if ((pressed & SCE_CTRL_CIRCLE) && BackButtonPressed)
         BackButtonPressed(&jni, NULL);
 
-    // In flight with a menu open, Start/Select still close it via their HUD buttons.
-    if (controls_in_space()) {
-        int x, y;
-        if ((pressed & SCE_CTRL_SELECT) && hud_pos(HUD_ACTION, &x, &y)) {
-            touch(HUD_POINTER(HUD_ACTION), ACTION_DOWN, x, y);
-            touch(HUD_POINTER(HUD_ACTION), ACTION_UP, x, y);
-        }
-    }
 }
 
 static void handle_controls(int screen_touched) {
@@ -568,7 +575,9 @@ static void handle_controls(int screen_touched) {
 
 void gl_draw_cursor(int x, int y, int pressed);
 
+void gl_draw_controls_card(void);
 static void draw_controls_overlay(void) {
+    if (prev_buttons & SCE_CTRL_SELECT) { gl_draw_controls_card(); return; }
     if (prev_mode == 0 && cursor_shown)
         gl_draw_cursor((int)cursor_x, (int)cursor_y, cursor_down);
 }
