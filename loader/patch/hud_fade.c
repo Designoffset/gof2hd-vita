@@ -120,7 +120,27 @@ static void redirect(uintptr_t file_addr, const char *sym, void **orig, void *ho
     *slot = (uintptr_t)hook;
 }
 
+/*
+ * Interface images: the engine creates every texture with GL_REPEAT unless
+ * Engine::clampTextures is set (it never is in this build). The 2D interface
+ * is drawn scaled (1280x725 layout on a 960x544 screen), so bilinear filtering
+ * at a picture's edge blends in texels from its opposite edge: faint lines at
+ * the ends of buttons and panels. Create 2D images with the clamp flag on
+ * (clamp to edge + linear); 3D textures keep repeating.
+ */
+static unsigned char *Engine_clampTextures;
+static int (*orig_Image2DCreate)(void *canvas, unsigned short id, unsigned int *out);
+static int Image2DCreate_hook(void *canvas, unsigned short id, unsigned int *out) {
+    unsigned char was = Engine_clampTextures ? *Engine_clampTextures : 0;
+    if (Engine_clampTextures) *Engine_clampTextures = 1;
+    int r = orig_Image2DCreate(canvas, id, out);
+    if (Engine_clampTextures) *Engine_clampTextures = was;
+    return r;
+}
+
 void patch__hud_fade(void) {
+    Engine_clampTextures = (unsigned char *)so_symbol(&so_mod, "_ZN11AbyssEngine6Engine13clampTexturesE");
+    redirect(0x211840, "_ZN11AbyssEngine11PaintCanvas13Image2DCreateEtRj", (void **)&orig_Image2DCreate, Image2DCreate_hook);
     Canvas_SetColor = (void *)so_symbol(&so_mod, "_ZN11AbyssEngine11PaintCanvas8SetColorEj");
     Canvas_ImgW = (void *)so_symbol(&so_mod, "_ZN11AbyssEngine11PaintCanvas15GetImage2DWidthEj");
     Canvas_ImgH = (void *)so_symbol(&so_mod, "_ZN11AbyssEngine11PaintCanvas16GetImage2DHeightEj");
