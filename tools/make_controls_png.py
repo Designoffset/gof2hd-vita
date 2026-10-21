@@ -18,37 +18,51 @@ lw = 2 * S
 d.text(P(480, 26), "CONTROLS", font=title, fill=TXT, anchor="mm")
 d.text(P(480, 50), "hold SELECT to show this screen", font=small, fill=DIM, anchor="mm")
 
-# --- Vita body
-cx, cy = 480, 228
-bx0, bx1, by0, by1 = 306, 654, 150, 306
-d.rounded_rectangle(box(bx0, by0, bx1, by1), radius=78 * S, outline=LINE, width=lw)
-d.rounded_rectangle(box(384, 164, 576, 292), radius=6 * S, outline=LINE, width=lw)        # screen
+# --- Vita (PCH-1000) body, drawn to its real proportions (182 x 84 mm,
+# 5" 16:9 screen in the middle, D-pad + left stick + PS button on the left,
+# face buttons + right stick + SELECT/START on the right).
+bx0, by0, BW, BH = 270, 140, 420, 194
+bx1, by1 = bx0 + BW, by0 + BH
+def V(fx, fy): return (bx0 + fx * BW, by0 + fy * BH)
+d.rounded_rectangle(box(bx0, by0, bx1, by1), radius=int(0.46 * BH) * S, outline=LINE, width=lw)
+sw, sh = 0.60 * BW, 0.60 * BW * 9 / 16
+sx0, sy0 = bx0 + (BW - sw) / 2, by0 + (BH - sh) / 2
+d.rounded_rectangle(box(sx0 - 6, sy0 - 6, sx0 + sw + 6, sy0 + sh + 6), radius=8 * S, outline=DIM, width=S)  # glass
+d.rectangle(box(sx0, sy0, sx0 + sw, sy0 + sh), outline=LINE, width=lw)                                    # screen
 # shoulder buttons
-d.arc(box(bx0 + 6, by0 - 8, bx0 + 120, by0 + 60), 200, 265, fill=LINE, width=lw * 2)
-d.arc(box(bx1 - 120, by0 - 8, bx1 - 6, by0 + 60), 275, 340, fill=LINE, width=lw * 2)
+d.arc(box(bx0 + 4, by0 - 6, bx0 + 150, by0 + 90), 205, 262, fill=LINE, width=lw * 2)
+d.arc(box(bx1 - 150, by0 - 6, bx1 - 4, by0 + 90), 278, 335, fill=LINE, width=lw * 2)
 # D-pad
-dx, dy = 346, 202
-for (ox, oy) in ((0, -14), (0, 14), (-14, 0), (14, 0)):
-    d.rounded_rectangle(box(dx + ox - 7, dy + oy - 7, dx + ox + 7, dy + oy + 7), radius=2 * S, outline=LINE, width=S)
+dx, dy = V(0.105, 0.33)
+for (ox, oy) in ((0, -12), (0, 12), (-12, 0), (12, 0)):
+    d.rounded_rectangle(box(dx + ox - 6, dy + oy - 6, dx + ox + 6, dy + oy + 6), radius=2 * S, outline=LINE, width=S)
 # sticks
-lsx, lsy, rsx, rsy = 360, 260, 600, 260
+lsx, lsy = V(0.155, 0.66)
+rsx, rsy = V(0.845, 0.66)
 for (x, y) in ((lsx, lsy), (rsx, rsy)):
-    d.ellipse(box(x - 15, y - 15, x + 15, y + 15), outline=LINE, width=lw)
-    d.ellipse(box(x - 8, y - 8, x + 8, y + 8), outline=LINE, width=S)
+    d.ellipse(box(x - 13, y - 13, x + 13, y + 13), outline=LINE, width=lw)
+    d.ellipse(box(x - 7, y - 7, x + 7, y + 7), outline=LINE, width=S)
 # face buttons
-fx, fy = 614, 202
-face = {"tri": (fx, fy - 17), "cir": (fx + 17, fy), "crs": (fx, fy + 17), "sqr": (fx - 17, fy)}
+fx, fy = V(0.895, 0.33)
+face = {"tri": (fx, fy - 15), "cir": (fx + 15, fy), "crs": (fx, fy + 15), "sqr": (fx - 15, fy)}
 for k, (x, y) in face.items():
-    d.ellipse(box(x - 8, y - 8, x + 8, y + 8), outline=LINE, width=S)
-glyph = {"tri": "△", "cir": "○", "crs": "✕", "sqr": "□"}
+    d.ellipse(box(x - 7, y - 7, x + 7, y + 7), outline=LINE, width=S)
+glyph = {"tri": "\u25b3", "cir": "\u25cb", "crs": "\u2715", "sqr": "\u25a1"}
 for k, (x, y) in face.items():
-    d.text(P(x, y), glyph[k], font=sym, fill=LINE, anchor="mm")
-# start / select
-st, se = (628, 290), (604, 290)
-for (x, y) in (st, se):
+    d.text(P(x, y), glyph[k], font=small, fill=LINE, anchor="mm")
+# PS button, SELECT / START, front camera, speakers
+px, py = V(0.075, 0.85)
+d.ellipse(box(px - 7, py - 7, px + 7, py + 7), outline=LINE, width=S)
+d.text(P(px, py), "PS", font=font("DejaVuSans-Bold.ttf", 6), fill=LINE, anchor="mm")
+se = V(0.875, 0.88); st = V(0.935, 0.88)
+for (x, y) in (se, st):
     d.ellipse(box(x - 5, y - 4, x + 5, y + 4), outline=LINE, width=S)
-# PS button
-d.ellipse(box(326, 280, 340, 294), outline=LINE, width=S)
+cxm, cym = V(0.93, 0.10)
+d.ellipse(box(cxm - 3, cym - 3, cxm + 3, cym + 3), outline=DIM, width=S)
+for (fxs, fys) in ((0.04, 0.55), (0.96, 0.55)):
+    gx, gy = V(fxs, fys)
+    for k in range(3):
+        d.ellipse(box(gx - 1.5, gy - 8 + k * 8 - 1.5, gx + 1.5, gy - 8 + k * 8 + 1.5), fill=DIM)
 
 def callout(pts, text, anchor, color=TXT):
     d.line([P(*p) for p in pts], fill=ACC, width=S + 1)
@@ -60,28 +74,28 @@ def callout(pts, text, anchor, color=TXT):
         d.text(P(x + off, y + i * 19 - (len(lines) - 1) * 9.5), t, font=lab, fill=color, anchor=anchor)
 
 # left side
-callout([(336, 152), (290, 110), (270, 110)], "L  Barrel roll left", "rm")
-callout([(dx - 21, dy), (270, 200)], "D-pad ↑  Autopilot\nD-pad ↓  Fast forward / jump\nD-pad →  Action menu", "rm")
-callout([(lsx - 16, lsy + 6), (290, 286), (270, 286)], "Left stick  Steer", "rm")
+callout([(bx0 + 60, by0 + 6), (300, 108), (250, 108)], "L  Barrel roll left", "rm")
+callout([(dx - 19, dy), (250, dy)], "D-pad \u2191  Autopilot\nD-pad \u2193  Fast forward / jump\nD-pad \u2192  Action menu", "rm")
+callout([(lsx - 14, lsy + 4), (290, lsy + 22), (250, lsy + 22)], "Left stick  Steer", "rm")
 # right side
-callout([(624, 152), (670, 110), (690, 110)], "R  Barrel roll right", "lm")
-callout([(face["tri"][0] + 8, face["tri"][1] - 6), (670, 160), (690, 160)], "△  Boost", "lm")
-callout([(face["cir"][0] + 9, face["cir"][1]), (690, 196)], "○  Change camera", "lm", ACC)
-callout([(face["crs"][0] + 8, face["crs"][1] + 5), (670, 226), (690, 226)], "✕  Fire", "lm")
-callout([(face["sqr"][0] - 2, face["sqr"][1] + 9), (590, 232), (650, 254), (690, 254)], "□  Secondary weapon", "lm")
-callout([(rsx + 16, rsy + 6), (670, 284), (690, 284)], "Right stick ↑↓  Speed up / down", "lm")
-callout([(st[0] + 4, st[1] + 4), (660, 316), (690, 316)], "START  Pause menu", "lm")
-callout([(se[0], se[1] + 5), (600, 342), (690, 342)], "SELECT (hold)  This screen", "lm")
+callout([(bx1 - 60, by0 + 6), (660, 108), (710, 108)], "R  Barrel roll right", "lm")
+callout([(face["tri"][0] + 7, face["tri"][1] - 5), (690, 150), (710, 150)], "\u25b3  Boost", "lm")
+callout([(face["cir"][0] + 8, face["cir"][1]), (710, face["cir"][1])], "\u25cb  Change camera", "lm", ACC)
+callout([(face["crs"][0] + 7, face["crs"][1] + 4), (690, 228), (710, 228)], "\u2715  Fire", "lm")
+callout([(face["sqr"][0] - 4, face["sqr"][1] + 7), (640, 250), (700, 256), (710, 256)], "\u25a1  Secondary weapon", "lm")
+callout([(rsx + 13, rsy + 4), (695, 284), (710, 284)], "R stick \u2191\u2193  Speed up / down", "lm")
+callout([(st[0] + 3, st[1] + 4), (700, 330), (710, 330)], "START  Pause menu", "lm")
+callout([(se[0], se[1] + 5), (se[0], 352), (710, 352)], "SELECT (hold)  This screen", "lm")
 # screen label
-d.text(P(480, 220), "Touch screen", font=lab, fill=DIM, anchor="mm")
-d.text(P(480, 240), "works too", font=small, fill=DIM, anchor="mm")
+d.text(P(480, 228), "Touch screen", font=lab, fill=DIM, anchor="mm")
+d.text(P(480, 248), "works too", font=small, fill=DIM, anchor="mm")
 
 # menus line
-d.text(P(480, 370), "IN MENUS & DIALOGUE:   Left stick / D-pad  move cursor     ✕ or R  select     ○  back",
+d.text(P(480, 376), "IN MENUS & DIALOGUE:   Left stick / D-pad  move cursor     ✕ or R  select     ○  back",
        font=small, fill=DIM, anchor="mm")
 
 # circle notice
-y0 = 392
+y0 = 396
 d.rounded_rectangle(box(30, y0, 930, 526), radius=10 * S, fill=(40, 30, 12), outline=ACC, width=S + 1)
 d.text(P(50, y0 + 20), "○  CIRCLE CHANGES THE CAMERA", font=font("DejaVuSans-Bold.ttf", 16), fill=ACC, anchor="lm")
 for i, t in enumerate([
