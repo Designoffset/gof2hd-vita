@@ -37,8 +37,7 @@ void gl_preload() {
 }
 
 void gl_init() {
-    // The display only receives the scaled game frame, so it needs no MSAA.
-    GLboolean ok = vglInitExtended(0, DISPLAY_W, DISPLAY_H, 6 * 1024 * 1024, SCE_GXM_MULTISAMPLE_NONE);
+    GLboolean ok = vglInitExtended(0, DISPLAY_W, DISPLAY_H, 6 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
     logv_info("vglInitExtended -> %d; free KB: vram=%u ram=%u phycont=%u budget=%u external=%u",
               ok, vglMemFree(VGL_MEM_VRAM) / 1024, vglMemFree(VGL_MEM_RAM) / 1024,
               vglMemFree(VGL_MEM_PHYCONT) / 1024, vglMemFree(VGL_MEM_BUDGET) / 1024,
@@ -46,8 +45,21 @@ void gl_init() {
     // Translate+compile GLSL in glCompileShader so failures are reported
     // there; POSTPONED mode compiles inside glLinkProgram and crashes on failure.
     vglSetSemanticBindingMode(VGL_MODE_GLOBAL);
+#ifdef GAME_OFFSCREEN
     gl_create_game_fb();
+#endif
 }
+
+// The game believes the screen is GAME_W x GAME_H, so its interface is laid
+// out with that much room, but it draws straight to the 960x544 display:
+// every viewport and scissor rectangle it sets is scaled down to the display.
+// 3D keeps the same 16:9 shape and renders at native resolution with MSAA;
+// the 2D interface is scaled by its projection along with the viewport.
+#define VX(v) ((v) * DISPLAY_W / GAME_W)
+#define VY(v) ((v) * DISPLAY_H / GAME_H)
+static int scale_rect(GLuint fb) { return fb == 0; }  // only the screen, not the game's own FBOs
+
+void glScissorHook(GLint x, GLint y, GLsizei w, GLsizei h);
 
 // The game draws at GAME_W x GAME_H into game_fb; every frame that is scaled
 // down onto the 960x544 display. The game's binds of framebuffer 0 are sent to
@@ -345,7 +357,21 @@ void glViewportHook(GLint x, GLint y, GLsizei w, GLsizei h) {
         vp_logs++;
     }
     last_vp[0] = x; last_vp[1] = y; last_vp[2] = w; last_vp[3] = h;
+    if (!game_fb && scale_rect(cur_fb)) {
+        GLint x1 = VX(x + w), y1 = VY(y + h);
+        x = VX(x); y = VY(y);
+        w = x1 - x; h = y1 - y;
+    }
     glViewport(x, y, w, h);
+}
+
+void glScissorHook(GLint x, GLint y, GLsizei w, GLsizei h) {
+    if (!game_fb && scale_rect(cur_fb)) {
+        GLint x1 = VX(x + w), y1 = VY(y + h);
+        x = VX(x); y = VY(y);
+        w = x1 - x; h = y1 - y;
+    }
+    glScissor(x, y, w, h);
 }
 
 void glDrawArraysHook(GLenum mode, GLint first, GLsizei count) {
@@ -638,7 +664,7 @@ EGLBoolean eglTerminate(EGLDisplay dpy) {
 // Controller cursor for the menus: a white square with a dark outline, drawn
 // with scissored clears after the game's frame (no shader or texture state).
 static void fill_rect(int x, int y, int w, int h, float r, float g, float b) {
-    glScissor(x, GAME_H - y - h, w, h);
+    glScissorHook(x, GAME_H - y - h, w, h);
     glClearColor(r, g, b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 }
@@ -653,7 +679,7 @@ void gl_draw_cursor(int x, int y, int pressed) {
     glGetBooleanv(GL_COLOR_WRITEMASK, cm);
     GLint fb = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fb);
-    if ((GLuint)fb != game_fb) glBindFramebuffer(GL_FRAMEBUFFER, game_fb);
+    if ((GLuint)fb != game_fb) glBindFramebuffer(GL_FRAMEBUFFER, game_fb);  // 0 = display
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glEnable(GL_SCISSOR_TEST);
 
@@ -663,7 +689,7 @@ void gl_draw_cursor(int x, int y, int pressed) {
     if (pressed) fill_rect(x - in, y - in, 2 * in, 2 * in, 1.0f, 0.75f, 0.1f);
     else         fill_rect(x - in, y - in, 2 * in, 2 * in, 1.0f, 1.0f, 1.0f);
 
-    glScissor(box[0], box[1], box[2], box[3]);
+    glScissor(box[0], box[1], box[2], box[3]);  // restore the raw (already scaled) box
     if (!sc) glDisable(GL_SCISSOR_TEST);
     glClearColor(cc[0], cc[1], cc[2], cc[3]);
     glColorMask(cm[0], cm[1], cm[2], cm[3]);
@@ -730,3 +756,8 @@ void fn##Hook(GLint loc, GLsizei count, const T *v) { \
 }
 SPLIT_UPLOAD(glUniform3fv, GLfloat, 3)
 SPLIT_UPLOAD(glUniform4fv, GLfloat, 4)
+
+// vita-elf-create needs a few KB free at the end of the text segment for SCE
+// data; when the code ends too close to the boundary the link fails with
+// "segment 1 overlaps". This pad shifts the boundary.
+__attribute__((used)) static const unsigned char segment_pad[12288] = { 1 };

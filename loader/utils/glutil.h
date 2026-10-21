@@ -124,3 +124,4 @@ EGLBoolean eglTerminate(EGLDisplay dpy);
 #endif // SOLOADER_GLUTIL_H
 
 void gl_create_game_fb(void);
+void glScissorHook(GLint x, GLint y, GLsizei w, GLsizei h);

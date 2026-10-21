@@ -566,7 +566,7 @@ so_default_dynlib default_dynlib[] = {
         { "glLineWidth", (uintptr_t)&glLineWidth },
         { "glLinkProgram", (uintptr_t)&glLinkProgramHook },
         { "glPixelStorei", (uintptr_t)&ret0 },
-        { "glScissor", (uintptr_t)&glScissor },
+        { "glScissor", (uintptr_t)&glScissorHook },
         { "glShaderSource", (uintptr_t)&glShaderSourceHook },
         { "glTexImage2D", (uintptr_t)&glTexImage2D },
         { "glTexParameteri", (uintptr_t)&glTexParameteri },
