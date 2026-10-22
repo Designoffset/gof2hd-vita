@@ -239,6 +239,15 @@ void controls_flight_tick(int flight, unsigned int pressed, SceCtrlData *pad) {
         log_info("controls: steering was set to tilt, switched to the analog stick");
     }
     int cam = MG_I(g, 0x14);
+    // Leaving the first-person view can leave the camera's "hide the ship"
+    // flag set, so the ship stays invisible in the other views.
+    if (cam != 2) {
+        void *tfc = *(void **)((uintptr_t)g + 0xf4);
+        if (tfc && *(unsigned char *)((uintptr_t)tfc + 0x100) && !MG_B(g, 0x18)) {
+            *(unsigned char *)((uintptr_t)tfc + 0x100) = 0;
+            logv_info("controls: cleared first-person ship hiding on camera %d", cam);
+        }
+    }
     if (cam != last_cam) {
         logv_info("controls: camera %d -> %d", last_cam, cam);
         last_cam = cam;
@@ -324,6 +333,19 @@ static void music_cleanup(void) {
 
 static int music_timer = 0;
 void controls_music_kick(void) { music_timer = 120; }   // two seconds after a module change
+// The music category: the category of any loaded music event (ids used by
+// Globals::playMusicAndFadeOutCurrent).
+void *music_category_hint(void) {
+    static void *cat = NULL;
+    if (cat || !Globals__sound || !*Globals__sound || !Ev_getCategory) return cat;
+    static const int ids[] = { 0x83, 0x84, 0x85, 0x88, 0x90, 0x91, 0x92, 0x93, 0x94, 0x98, 0x8be, 0x8bf, 0x8c1, 0x8c2 };
+    void **ev = (void **)((uintptr_t)*Globals__sound + 0x18);
+    for (unsigned i = 0; i < sizeof(ids) / sizeof(ids[0]) && !cat; i++)
+        if (ev[ids[i]]) Ev_getCategory(ev[ids[i]], &cat);
+    if (cat) logv_info("sound: music category %p", cat);
+    return cat;
+}
+
 void controls_music_tick(void) {
     static int last = -2;
     int m = controls_module();

@@ -286,6 +286,43 @@ int FMOD_Sound_getOpenState_hook(void *snd, int *state, unsigned int *pct, int *
     return r;
 }
 
+// Music overlap: two music events (or two instances of one) end up playing
+// together, e.g. two pirate themes, or Vossk music over the space theme.
+// Whenever an event in the music category starts, stop the other music
+// events that are still playing (FMOD fades them out).
+void *music_category_hint(void);
+int FMOD_Event_start_hook(void *ev) {
+    static int (*real)(void *) = NULL;
+    static int (*getCat)(void *, void **) = NULL;
+    static int (*getState)(void *, unsigned *) = NULL;
+    static int (*stop)(void *, int) = NULL;
+    static void *playing[16];
+    if (!real) {
+        real = (void *)so_symbol(&so_fmodevent, "_ZN4FMOD5Event5startEv");
+        getCat = (void *)so_symbol(&so_fmodevent, "_ZN4FMOD5Event11getCategoryEPPNS_13EventCategoryE");
+        getState = (void *)so_symbol(&so_fmodevent, "_ZN4FMOD5Event8getStateEPj");
+        stop = (void *)so_symbol(&so_fmodevent, "_ZN4FMOD5Event4stopEb");
+    }
+    void *music = music_category_hint();
+    void *cat = NULL;
+    if (music && ev && getCat(ev, &cat) == 0 && cat == music) {
+        int slot = -1;
+        for (int i = 0; i < 16; i++) {
+            if (!playing[i]) { if (slot < 0) slot = i; continue; }
+            if (playing[i] == ev) { slot = i; continue; }
+            unsigned st = 0;
+            if (getState(playing[i], &st) == 0 && (st & 0x8)) {   // EVENT_STATE_PLAYING
+                logv_info("sound: music %p starts, stopping music %p", ev, playing[i]);
+                stop(playing[i], 0);
+            }
+            playing[i] = NULL;
+            if (slot < 0) slot = i;
+        }
+        if (slot >= 0) playing[slot] = ev;
+    }
+    return real(ev);
+}
+
 // FMOD's OpenSL ES output fails against the Vita's OpenSL library (and then
 // deadlocks tearing it down). Use FMOD's "Audio Track" output instead: on
 // Android a Java thread pulls mixed blocks out of it with fmodProcess() and
@@ -655,6 +692,7 @@ so_default_dynlib default_dynlib[] = {
         { "_ZN4FMOD6System12createStreamEPKcjP22FMOD_CREATESOUNDEXINFOPPNS_5SoundE", (uintptr_t)&FMOD_System_createStream_hook },
         { "_ZN4FMOD7SystemI19createSoundInternalEPKcjjjP22FMOD_CREATESOUNDEXINFOPPNS_4FileEbPPNS_6SoundIE", (uintptr_t)&FMOD_SystemI_createSoundInternal_hook },
         { "_ZN4FMOD5Sound12getOpenStateEP14FMOD_OPENSTATEPjPbS4_", (uintptr_t)&FMOD_Sound_getOpenState_hook },
+        { "_ZN4FMOD5Event5startEv", (uintptr_t)&FMOD_Event_start_hook },
         { "dlsym", (uintptr_t)&dlsym_soloader },
         { "dlclose", (uintptr_t)&dlclose_soloader },
         { "dlerror", (uintptr_t)&dlerror_soloader },
