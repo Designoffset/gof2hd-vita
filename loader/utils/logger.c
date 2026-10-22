@@ -43,15 +43,19 @@ static char buffer_b[2048];
 #include <psp2/io/fcntl.h>
 #include <string.h>
 
-// Mirror everything to ux0:data/gof2hd/log.txt (capped at 4 MB).
+// Mirror everything to ux0:data/gof2hd/log.txt (capped at 24 MB, enough for hours of play).
 static SceUID _log_fd = -1;
 static unsigned int _log_written = 0;
 static void _log_file(const char *s) {
     if (_log_fd < 0 && _log_written == 0) {
+        // Keep the previous session's log (log_prev.txt): after a crash the
+        // game is usually started again before anyone copies the log.
+        sceIoRemove(DATA_PATH "log_prev.txt");
+        sceIoRename(DATA_PATH "log.txt", DATA_PATH "log_prev.txt");
         _log_fd = sceIoOpen(DATA_PATH "log.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
         _log_written = 1;
     }
-    if (_log_fd < 0 || _log_written > 4 * 1024 * 1024) return;
+    if (_log_fd < 0 || _log_written > 24 * 1024 * 1024) return;
     unsigned int n = strlen(s);
     sceIoWrite(_log_fd, s, n);
     _log_written += n;
