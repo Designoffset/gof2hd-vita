@@ -191,6 +191,30 @@ static void (*Ego_initManeuver)(void *ego, int kind);
 static void (*Ego_changeThrust)(void *ego, float delta);
 static void (*Ego_throttleChanged)(void *ego);
 
+// First-person view. The engine has one (MGame camera 2: the camera sits at
+// the ship's own matrix and the ship model is hidden), but MGame::switchCamera
+// skips it (2 -> 3). Select toggles it directly; O still cycles the others.
+static void (*Cam_enableFirstPerson)(void *cam, int on);
+static void (*Cam_setRotationAroundTarget)(void *cam, int on);
+static void (*Script_resetCamera)(void *script, void *level);
+static void (*Ego_setFreeLookMode)(void *ego, int on);
+static void (*Ego_setTurretMode)(void *ego, int on);
+
+static void first_person(void *g, int on) {
+    void *ego = *(void **)((uintptr_t)g + 0x58);
+    if (!on) { if (MGame_switchCamera) MGame_switchCamera(g, 0); return; }
+    if (!Cam_enableFirstPerson || !ego) return;
+    MG_I(g, 0x14) = 2;
+    MG_B(g, 0x18) = 0;
+    MG_B(g, 0xd5) = 0;
+    if (Ego_setTurretMode) Ego_setTurretMode(ego, 0);
+    if (Script_resetCamera) Script_resetCamera(*(void **)((uintptr_t)g + 0x7c), *(void **)((uintptr_t)g + 0x78));
+    void *cam = *(void **)((uintptr_t)g + 0xf4);
+    if (Cam_setRotationAroundTarget) Cam_setRotationAroundTarget(cam, 0);
+    if (Ego_setFreeLookMode) Ego_setFreeLookMode(ego, 0);
+    Cam_enableFirstPerson(cam, 1);
+}
+
 static float rstick(unsigned char v) {
     float a = ((float)v - 128.f) / 127.f;
     if (a > -0.25f && a < 0.25f) return 0.f;
@@ -236,6 +260,12 @@ void controls_flight_tick(int flight, unsigned int pressed, SceCtrlData *pad) {
         if (pressed & SCE_CTRL_LTRIGGER) roll = 1;
         if (pressed & SCE_CTRL_RTRIGGER) roll = 2;
         if (roll && Ego_initManeuver) Ego_initManeuver(ego, roll);
+        // Select: cockpit (first-person) view on / off.
+        if (pressed & SCE_CTRL_SELECT) {
+            int fp = MG_I(g, 0x14) == 2;
+            logv_info("controls: first-person view %s", fp ? "off" : "on");
+            first_person(g, !fp);
+        }
         // Right stick up/down: throttle (full range in about a second).
         if (ry != 0.f && Ego_changeThrust) {
             Ego_changeThrust(ego, -ry / 60.f);
@@ -340,6 +370,11 @@ int controls_probe_hud(void) {
 }
 
 void patch__controls_fix() {
+    Cam_enableFirstPerson = (void *) so_symbol(&so_mod, "_ZN18TargetFollowCamera20enableFirstPersonCamEb");
+    Cam_setRotationAroundTarget = (void *) so_symbol(&so_mod, "_ZN18TargetFollowCamera23setRotationAroundTargetEb");
+    Script_resetCamera = (void *) so_symbol(&so_mod, "_ZN11LevelScript11resetCameraEP5Level");
+    Ego_setFreeLookMode = (void *) so_symbol(&so_mod, "_ZN9PlayerEgo15setFreeLookModeEb");
+    Ego_setTurretMode = (void *) so_symbol(&so_mod, "_ZN9PlayerEgo13setTurretModeEb");
     Globals__options = (unsigned char *) so_symbol(&so_mod, "_ZN7Globals7optionsE");
     Ego_initManeuver = (void *) so_symbol(&so_mod, "_ZN9PlayerEgo12initManeuverEi");
     Ego_changeThrust = (void *) so_symbol(&so_mod, "_ZN9PlayerEgo12changeThrustEf");
