@@ -51,6 +51,11 @@ void gl_init() {
     // Translate+compile GLSL in glCompileShader so failures are reported
     // there; POSTPONED mode compiles inside glLinkProgram and crashes on failure.
     vglSetSemanticBindingMode(VGL_MODE_GLOBAL);
+    // Never let vitaGL spill textures into the game's own heap when its
+    // pools run out: the crash dumps show heap corruption inside those
+    // spill allocations and GPU faults afterwards. A texture that doesn't
+    // fit now just fails to load (logged by vitaGL) instead of crashing.
+    vglUseExtraMem(GL_FALSE);
 #ifdef GAME_OFFSCREEN
     gl_create_game_fb();
 #endif
