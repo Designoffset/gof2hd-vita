@@ -88,6 +88,7 @@ extern void * _Znaj;
 extern void * _Znwj;
 void *mw_malloc(size_t); void *mw_calloc(size_t, size_t); void *mw_realloc(void *, size_t);
 void *mw_memalign(size_t, size_t); void *mw_new(size_t); void *mw_new_array(size_t);
+void mw_free(void *); void mw_delete(void *);
 
 extern const char *BIONIC_ctype_;
 extern const short *BIONIC_tolower_tab_;
@@ -484,8 +485,8 @@ so_default_dynlib default_dynlib[] = {
         { "SL_IID_ENVIRONMENTALREVERB", (uintptr_t)&SL_IID_ENVIRONMENTALREVERB },
         { "SL_IID_PLAY", (uintptr_t)&SL_IID_PLAY },
         { "SL_IID_VOLUME", (uintptr_t)&SL_IID_VOLUME },
-        { "_ZdaPv", (uintptr_t)&_ZdaPv },
-        { "_ZdlPv", (uintptr_t)&_ZdlPv },
+        { "_ZdaPv", (uintptr_t)&mw_delete },
+        { "_ZdlPv", (uintptr_t)&mw_delete },
         { "_Znaj", (uintptr_t)&mw_new_array },
         { "_Znwj", (uintptr_t)&mw_new },
         { "__aeabi_atexit", (uintptr_t)&__aeabi_atexit },
@@ -560,7 +561,7 @@ so_default_dynlib default_dynlib[] = {
         { "fopen", (uintptr_t)&fopen_soloader },
         { "fprintf", (uintptr_t)&fprintf },
         { "fread", (uintptr_t)&fread_counted },
-        { "free", (uintptr_t)&free },
+        { "free", (uintptr_t)&mw_free },
         { "fseek", (uintptr_t)&fseek_counted },
         { "fseeko", (uintptr_t)&fseeko },
         { "fstat", (uintptr_t)&fstat_soloader },

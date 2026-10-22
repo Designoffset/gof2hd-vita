@@ -219,6 +219,7 @@ int main(int argc, char* argv[]) {
             gl_stats_reset();
         if ((frame <= 3600 && frame % 60 == 1) || frame % 600 == 1)
             gl_stats_report();
+        if (frame % 3600 == 2) { extern void memwatch_report(void); memwatch_report(); }
 
         if (getExitFlag(&jni, NULL))
             sceKernelExitProcess(0);
