@@ -298,7 +298,9 @@ void glAttachShaderHook(GLuint program, GLuint shader) {
     else prog_fs[program] = shader;
 }
 
+int stat_links = 0;
 void glLinkProgramHook(GLuint program) {
+    stat_links++;
     if (program >= MAX_PROGRAMS) return;
     proxy_shader *vs = proxy(prog_vs[program]);
     proxy_shader *fs = proxy(prog_fs[program]);

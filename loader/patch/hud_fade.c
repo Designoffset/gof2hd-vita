@@ -138,7 +138,28 @@ static int Image2DCreate_hook(void *canvas, unsigned short id, unsigned int *out
     return r;
 }
 
+/*
+ * Every change of game module (title, station, flight, and the reload of the
+ * flight module after a jump or wormhole) goes through
+ * ApplicationManager::SetCurrentApplicationModule. Stop sound effects there
+ * (FModSound::stopAllSoundFXEvents leaves music alone) so a weapon or engine
+ * loop that was playing doesn't keep looping over the loading screen, and
+ * check for leftover music shortly after.
+ */
+static void (*orig_SetModule)(void *mgr, unsigned id);
+static void (*FModSound_stopAllSFX)(void *fs);
+static void **Globals__sound_hf;
+void controls_music_kick(void);
+static void SetModule_hook(void *mgr, unsigned id) {
+    if (FModSound_stopAllSFX && Globals__sound_hf && *Globals__sound_hf) FModSound_stopAllSFX(*Globals__sound_hf);
+    controls_music_kick();
+    orig_SetModule(mgr, id);
+}
+
 void patch__hud_fade(void) {
+    FModSound_stopAllSFX = (void *)so_symbol(&so_mod, "_ZN9FModSound20stopAllSoundFXEventsEv");
+    Globals__sound_hf = (void **)so_symbol(&so_mod, "_ZN7Globals5soundE");
+    redirect(0x211864, "_ZN11AbyssEngine18ApplicationManager27SetCurrentApplicationModuleEj", (void **)&orig_SetModule, SetModule_hook);
     Engine_clampTextures = (unsigned char *)so_symbol(&so_mod, "_ZN11AbyssEngine6Engine13clampTexturesE");
 #ifndef GAME_OFFSCREEN
     redirect(0x211840, "_ZN11AbyssEngine11PaintCanvas13Image2DCreateEtRj", (void **)&orig_Image2DCreate, Image2DCreate_hook);

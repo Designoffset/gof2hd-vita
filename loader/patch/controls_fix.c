@@ -290,6 +290,47 @@ void controls_flight_tick(int flight, unsigned int pressed, SceCtrlData *pad) {
     }
 }
 
+/*
+ * Music overlap: the station tune sometimes keeps playing in space (and the
+ * space tune under it). A little after every change between title, station
+ * and flight, stop any other playing event in the music category, keeping
+ * the one the game says is current (FModSound+0). Events live at
+ * FModSound+0x18 + id*4.
+ */
+extern so_module so_fmodevent;
+static void **Globals__sound;
+static int (*Ev_stop)(void *ev, int immediate);
+static int (*Ev_getState)(void *ev, unsigned *state);
+static int (*Ev_getCategory)(void *ev, void **cat);
+
+static void music_cleanup(void) {
+    if (!Globals__sound || !*Globals__sound || !Ev_stop || !Ev_getState || !Ev_getCategory) return;
+    uintptr_t fs = (uintptr_t)*Globals__sound;
+    int cur = *(int *)fs;
+    if (cur < 0 || cur >= 0x8f5) return;
+    void **ev = (void **)(fs + 0x18);
+    void *cat = NULL;
+    if (!ev[cur] || Ev_getCategory(ev[cur], &cat) != 0 || !cat) return;
+    for (int i = 0; i < 0x8f5; i++) {
+        if (i == cur || !ev[i]) continue;
+        unsigned st = 0;
+        void *c = NULL;
+        if (Ev_getState(ev[i], &st) != 0 || !(st & 0x8)) continue;   // EVENT_STATE_PLAYING
+        if (Ev_getCategory(ev[i], &c) != 0 || c != cat) continue;
+        logv_info("sound: stopping leftover music event %d (current %d)", i, cur);
+        Ev_stop(ev[i], 0);
+    }
+}
+
+static int music_timer = 0;
+void controls_music_kick(void) { music_timer = 120; }   // two seconds after a module change
+void controls_music_tick(void) {
+    static int last = -2;
+    int m = controls_module();
+    if (m != last) { last = m; music_timer = 120; }
+    if (music_timer > 0 && --music_timer == 0) music_cleanup();
+}
+
 // The scan only works once the HUD exists, a little while into each flight.
 // Keep the last good result on the memory card so the buttons work from the
 // first frame next time.
@@ -370,6 +411,10 @@ int controls_probe_hud(void) {
 }
 
 void patch__controls_fix() {
+    Globals__sound = (void **) so_symbol(&so_mod, "_ZN7Globals5soundE");
+    Ev_stop = (void *) so_symbol(&so_fmodevent, "_ZN4FMOD5Event4stopEb");
+    Ev_getState = (void *) so_symbol(&so_fmodevent, "_ZN4FMOD5Event8getStateEPj");
+    Ev_getCategory = (void *) so_symbol(&so_fmodevent, "_ZN4FMOD5Event11getCategoryEPPNS_13EventCategoryE");
     Cam_enableFirstPerson = (void *) so_symbol(&so_mod, "_ZN18TargetFollowCamera20enableFirstPersonCamEb");
     Cam_setRotationAroundTarget = (void *) so_symbol(&so_mod, "_ZN18TargetFollowCamera23setRotationAroundTargetEb");
     Script_resetCamera = (void *) so_symbol(&so_mod, "_ZN11LevelScript11resetCameraEP5Level");

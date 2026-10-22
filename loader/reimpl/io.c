@@ -108,7 +108,9 @@ int readdir_r_soloader(DIR *dirp, dirent64_bionic *entry, dirent64_bionic **resu
 
 static const char *proc_path(const char *fname);
 
+int stat_fopens = 0;
 FILE *fopen_soloader(char *fname, char *mode) {
+    stat_fopens++;
     fname = (char *)proc_path(fname);
     FILE* ret =  fopen(fname, mode);
     // newlib's default 1 KB stdio buffer turns every small read into a

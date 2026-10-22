@@ -263,8 +263,10 @@ int FMOD_System_createStream_hook(void *sys, const char *name, unsigned int mode
     return r;
 }
 
+int stat_sounds = 0;
 int FMOD_SystemI_createSoundInternal_hook(void *sys, const char *name, unsigned int mode, unsigned int bufsize,
                                           unsigned int buftype, void *exinfo, void **file, int async, void **sound) {
+    stat_sounds++;
     int (*real)(void *, const char *, unsigned int, unsigned int, unsigned int, void *, void **, int, void **) =
         (void *)so_symbol(&so_fmodex, "_ZN4FMOD7SystemI19createSoundInternalEPKcjjjP22FMOD_CREATESOUNDEXINFOPPNS_4FileEbPPNS_6SoundIE");
     extern volatile uint32_t fmod_internal_site;

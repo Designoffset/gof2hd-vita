@@ -36,7 +36,11 @@
 #include <FalsoJNI/FalsoJNI.h>
 #include <so_util/so_util.h>
 
-int _newlib_heap_size_user = 246 * 1024 * 1024;
+// The game's own heap. It peaks around 85 MB in play; everything left over
+// goes to vitaGL's texture pool (VGL_MEM_RAM). With the old 246 MB heap
+// vitaGL got only ~56 MB, ran out on long sessions and spilled textures
+// into this heap (heap corruption / std::bad_alloc, missing text).
+int _newlib_heap_size_user = 170 * 1024 * 1024;
 
 so_module so_mod;
 
@@ -179,7 +183,21 @@ int main(int argc, char* argv[]) {
         uint64_t t0 = sceKernelGetProcessTimeWide();
         money_tick();
         { extern void station_tick(void); station_tick(); }
+        { extern void controls_music_tick(void); controls_music_tick(); }
         renderstep(&jni, NULL, (jlong)(t0 / 1000));
+        {
+            // Slow-frame report: what loaded during a frame that missed 60 fps
+            // by a lot (shader links, sound loads, file opens).
+            extern int stat_links, stat_sounds, stat_fopens;
+            unsigned long long dt = (sceKernelGetProcessTimeWide() - t0) / 1000;
+            static int reported = 0;
+            if (dt > 50 && controls_in_space() && reported < 60) {
+                reported++;
+                logv_info("slow frame: %llums, shader links %d, sound loads %d, files opened %d",
+                          dt, stat_links, stat_sounds, stat_fopens);
+            }
+            stat_links = stat_sounds = stat_fopens = 0;
+        }
         draw_controls_overlay();
         gl_swap();
 
@@ -189,11 +207,12 @@ int main(int argc, char* argv[]) {
         if ((frame <= 3600 && frame % 60 == 0) || frame % 600 == 0 || frame <= 3) {
             extern size_t memwatch_used(void), memwatch_peak(void), memwatch_arena(void);
             size_t used = memwatch_used();
-            logv_info("heartbeat frame=%u logoShown=%d mainMenu=%d inSpace=%d renderstep=%llums heap=%uKB peak=%uKB arena=%uKB vram=%uKB glram=%uKB",
+            logv_info("heartbeat frame=%u logoShown=%d mainMenu=%d inSpace=%d renderstep=%llums heap=%uKB peak=%uKB arena=%uKB vram=%uKB glram=%uKB phycont=%uKB",
                       frame, getLogoShown(&jni, NULL), isInMainMenu(&jni, NULL), controls_in_space(),
                       (sceKernelGetProcessTimeWide() - t0) / 1000,
                       (unsigned)(used / 1024), (unsigned)(memwatch_peak() / 1024), (unsigned)(memwatch_arena() / 1024),
-                      (unsigned)(vglMemFree(VGL_MEM_VRAM) / 1024), (unsigned)(vglMemFree(VGL_MEM_RAM) / 1024));
+                      (unsigned)(vglMemFree(VGL_MEM_VRAM) / 1024), (unsigned)(vglMemFree(VGL_MEM_RAM) / 1024),
+                      (unsigned)(vglMemFree(VGL_MEM_PHYCONT) / 1024));
         }
         // GL activity for exactly one frame right after each heartbeat
         if ((frame <= 3600 && frame % 60 == 0) || frame % 600 == 0)
