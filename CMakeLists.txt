@@ -176,6 +176,17 @@ vita_create_vpk(${VITA_VPKNAME}.vpk ${VITA_TITLEID} eboot.bin
                 ${CMAKE_SOURCE_DIR}/shaders/cg shaders
                 ${CMAKE_SOURCE_DIR}/shaders/glsl glsl
                 ${CMAKE_SOURCE_DIR}/data/hud_layout_1280.bin hud_layout_1280.bin
+                ${CMAKE_SOURCE_DIR}/livearea/bg/bg_01.png livearea/bg/bg_01.png
+                ${CMAKE_SOURCE_DIR}/livearea/bg/bg_02.png livearea/bg/bg_02.png
+                ${CMAKE_SOURCE_DIR}/livearea/bg/bg_03.png livearea/bg/bg_03.png
+                ${CMAKE_SOURCE_DIR}/livearea/bg/bg_04.png livearea/bg/bg_04.png
+                ${CMAKE_SOURCE_DIR}/livearea/bg/bg_05.png livearea/bg/bg_05.png
+                ${CMAKE_SOURCE_DIR}/livearea/bg/bg_06.png livearea/bg/bg_06.png
+                ${CMAKE_SOURCE_DIR}/livearea/bg/bg_07.png livearea/bg/bg_07.png
+                ${CMAKE_SOURCE_DIR}/livearea/bg/bg_08.png livearea/bg/bg_08.png
+                ${CMAKE_SOURCE_DIR}/livearea/bg/bg_09.png livearea/bg/bg_09.png
+                ${CMAKE_SOURCE_DIR}/livearea/bg/bg_10.png livearea/bg/bg_10.png
+                ${CMAKE_SOURCE_DIR}/livearea/bg/bg_11.png livearea/bg/bg_11.png
                 
                 )
 

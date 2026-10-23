@@ -25,6 +25,8 @@
 #include "utils/dialog.h"
 
 #include <stdlib.h>
+#include <stdio.h>
+#include <psp2/io/fcntl.h>
 #include <psp2/ctrl.h>
 #include <psp2/touch.h>
 #include <psp2/kernel/processmgr.h>
@@ -104,6 +106,35 @@ static void *sym(const char *name) {
     return s;
 }
 
+/*
+ * Random LiveArea background. The LiveArea shows a copy of bg0.png that the
+ * system keeps in ur0:appmeta/<title>/livearea/contents/. Each launch copies
+ * one of the backgrounds shipped in app0:livearea/bg/ over it (never the same
+ * one twice in a row), so the next visit to the LiveArea shows another scene.
+ */
+#define LA_COUNT 11
+static void livearea_rotate(void) {
+    int last = -1;
+    SceUID fd = sceIoOpen(DATA_PATH "livearea_last", SCE_O_RDONLY, 0);
+    if (fd >= 0) { char c[4] = {0}; sceIoRead(fd, c, 3); last = atoi(c); sceIoClose(fd); }
+    int pick = (int)((sceKernelGetProcessTimeWide() ^ (sceKernelGetSystemTimeWide() >> 3)) % LA_COUNT) + 1;
+    if (pick == last) pick = pick % LA_COUNT + 1;
+    char src[64];
+    snprintf(src, sizeof(src), "app0:livearea/bg/bg_%02d.png", pick);
+    SceUID in = sceIoOpen(src, SCE_O_RDONLY, 0);
+    if (in < 0) { logv_info("livearea: %s missing (0x%x)", src, in); return; }
+    const char *dst = "ur0:appmeta/GOF2HD012/livearea/contents/bg0.png";
+    SceUID out = sceIoOpen(dst, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+    if (out < 0) { logv_info("livearea: can't write %s (0x%x)", dst, out); sceIoClose(in); return; }
+    static char buf[64 * 1024];
+    int n, total = 0;
+    while ((n = sceIoRead(in, buf, sizeof(buf))) > 0) { sceIoWrite(out, buf, n); total += n; }
+    sceIoClose(in); sceIoClose(out);
+    fd = sceIoOpen(DATA_PATH "livearea_last", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+    if (fd >= 0) { char c[8]; int l = snprintf(c, sizeof(c), "%d", pick); sceIoWrite(fd, c, l); sceIoClose(fd); }
+    logv_info("livearea: background %d (%d bytes) installed for next time", pick, total);
+}
+
 int main(int argc, char* argv[]) {
     soloader_init_all();
 
@@ -159,6 +190,7 @@ int main(int argc, char* argv[]) {
 
     // GLViewRenderer.onSurfaceCreated()
     gl_init();
+    livearea_rotate();
 
     wd_set("setEnvironmentVariables");
     setEnvironmentVariables(&jni, NULL, (jobject)0x42424242);
