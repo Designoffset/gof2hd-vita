@@ -176,6 +176,21 @@ vita_create_vpk(${VITA_VPKNAME}.vpk ${VITA_TITLEID} eboot.bin
                 ${CMAKE_SOURCE_DIR}/shaders/cg shaders
                 ${CMAKE_SOURCE_DIR}/shaders/glsl glsl
                 ${CMAKE_SOURCE_DIR}/data/hud_layout_1280.bin hud_layout_1280.bin
+                ${CMAKE_SOURCE_DIR}/manual/001.png sce_sys/manual/001.png
+                ${CMAKE_SOURCE_DIR}/manual/002.png sce_sys/manual/002.png
+                ${CMAKE_SOURCE_DIR}/manual/003.png sce_sys/manual/003.png
+                ${CMAKE_SOURCE_DIR}/manual/004.png sce_sys/manual/004.png
+                ${CMAKE_SOURCE_DIR}/manual/005.png sce_sys/manual/005.png
+                ${CMAKE_SOURCE_DIR}/manual/006.png sce_sys/manual/006.png
+                ${CMAKE_SOURCE_DIR}/manual/007.png sce_sys/manual/007.png
+                ${CMAKE_SOURCE_DIR}/manual/008.png sce_sys/manual/008.png
+                ${CMAKE_SOURCE_DIR}/manual/009.png sce_sys/manual/009.png
+                ${CMAKE_SOURCE_DIR}/manual/010.png sce_sys/manual/010.png
+                ${CMAKE_SOURCE_DIR}/manual/011.png sce_sys/manual/011.png
+                ${CMAKE_SOURCE_DIR}/manual/012.png sce_sys/manual/012.png
+                ${CMAKE_SOURCE_DIR}/manual/013.png sce_sys/manual/013.png
+                ${CMAKE_SOURCE_DIR}/manual/014.png sce_sys/manual/014.png
+                ${CMAKE_SOURCE_DIR}/manual/015.png sce_sys/manual/015.png
                 ${CMAKE_SOURCE_DIR}/livearea/bg/bg_01.png livearea/bg/bg_01.png
                 ${CMAKE_SOURCE_DIR}/livearea/bg/bg_02.png livearea/bg/bg_02.png
                 ${CMAKE_SOURCE_DIR}/livearea/bg/bg_03.png livearea/bg/bg_03.png
