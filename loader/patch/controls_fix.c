@@ -304,8 +304,10 @@ void controls_flight_tick(int flight, unsigned int pressed, SceCtrlData *pad) {
         if (pressed & SCE_CTRL_LTRIGGER) roll = 1;
         if (pressed & SCE_CTRL_RTRIGGER) roll = 2;
         if (roll && Ego_initManeuver) Ego_initManeuver(ego, roll);
-        // Select: cockpit (first-person) view on / off.
-        if (pressed & SCE_CTRL_SELECT) {
+        // Select: cockpit (first-person) view on / off. Shelved for now
+        // (COCKPIT_VIEW 0); the code stays for when it is picked up again.
+        #define COCKPIT_VIEW 0
+        if (COCKPIT_VIEW && (pressed & SCE_CTRL_SELECT)) {
             int fp = MG_I(g, 0x14) == 2;
             logv_info("controls: first-person view %s", fp ? "off" : "on");
             first_person(g, !fp);
