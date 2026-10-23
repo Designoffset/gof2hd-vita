@@ -17,6 +17,7 @@
 #include "utils/logger.h"
 #include "utils/screen.h"
 #include <string.h>
+#include <math.h>
 #include <psp2/ctrl.h>
 #include <stdio.h>
 
@@ -215,6 +216,8 @@ static void first_person(void *g, int on) {
     Cam_enableFirstPerson(cam, 1);
 }
 
+static float *(*Geo_getMatrix)(void *geo);
+
 static float rstick(unsigned char v) {
     float a = ((float)v - 128.f) / 127.f;
     if (a > -0.25f && a < 0.25f) return 0.f;
@@ -264,7 +267,26 @@ void controls_flight_tick(int flight, unsigned int pressed, SceCtrlData *pad) {
     int free_to_fly = ego && !MG_B(g, 0x5d) && !MG_B(g, 0x5f) && !MG_B(g, 0x60);
     if (free_to_fly && pad) {
         // L / R: barrel roll left / right (the game's swipe maneuver: 1 = left, 2 = right).
-        float ry = rstick(pad->ry);
+        float ry = rstick(pad->ry), rx = rstick(pad->rx);
+        // Right stick left/right: roll the ship around its nose for as long as
+        // it is held. The flight model has no roll axis, so turn the ship's
+        // own orientation (the matrix of the geometry at PlayerEgo+8: columns
+        // are right, up, forward, position) around its forward axis.
+        if (rx != 0.f && Geo_getMatrix) {
+            void *geo = *(void **)((uintptr_t)ego + 8);
+            float *m = geo ? Geo_getMatrix(geo) : NULL;
+            if (m) {
+                float a = rx * 2.4f / 60.f;            // up to ~140 degrees a second
+                float c = cosf(a), sn = sinf(a);
+                for (int r = 0; r < 3; r++) {
+                    float R = m[r * 4 + 0], U = m[r * 4 + 1];
+                    m[r * 4 + 0] = R * c + U * sn;
+                    m[r * 4 + 1] = U * c - R * sn;
+                }
+                static int logged = 0;
+                if (logged < 3) { logged++; logv_info("controls: roll %.2f, up now %.2f %.2f %.2f", a, m[1], m[5], m[9]); }
+            }
+        }
         int roll = 0;
         if (pressed & SCE_CTRL_LTRIGGER) roll = 1;
         if (pressed & SCE_CTRL_RTRIGGER) roll = 2;
@@ -437,6 +459,7 @@ void patch__controls_fix() {
     Ev_stop = (void *) so_symbol(&so_fmodevent, "_ZN4FMOD5Event4stopEb");
     Ev_getState = (void *) so_symbol(&so_fmodevent, "_ZN4FMOD5Event8getStateEPj");
     Ev_getCategory = (void *) so_symbol(&so_fmodevent, "_ZN4FMOD5Event11getCategoryEPPNS_13EventCategoryE");
+    Geo_getMatrix = (void *) so_symbol(&so_mod, "_ZN10AEGeometry9getMatrixEv");
     Cam_enableFirstPerson = (void *) so_symbol(&so_mod, "_ZN18TargetFollowCamera20enableFirstPersonCamEb");
     Cam_setRotationAroundTarget = (void *) so_symbol(&so_mod, "_ZN18TargetFollowCamera23setRotationAroundTargetEb");
     Script_resetCamera = (void *) so_symbol(&so_mod, "_ZN11LevelScript11resetCameraEP5Level");
