@@ -191,6 +191,7 @@ vita_create_vpk(${VITA_VPKNAME}.vpk ${VITA_TITLEID} eboot.bin
                 ${CMAKE_SOURCE_DIR}/manual/013.png sce_sys/manual/013.png
                 ${CMAKE_SOURCE_DIR}/manual/014.png sce_sys/manual/014.png
                 ${CMAKE_SOURCE_DIR}/manual/015.png sce_sys/manual/015.png
+                ${CMAKE_SOURCE_DIR}/manual/016.png sce_sys/manual/016.png
                 ${CMAKE_SOURCE_DIR}/livearea/bg/bg_01.png livearea/bg/bg_01.png
                 ${CMAKE_SOURCE_DIR}/livearea/bg/bg_02.png livearea/bg/bg_02.png
                 ${CMAKE_SOURCE_DIR}/livearea/bg/bg_03.png livearea/bg/bg_03.png
