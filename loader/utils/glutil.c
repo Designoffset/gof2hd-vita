@@ -775,3 +775,82 @@ SPLIT_UPLOAD(glUniform4fv, GLfloat, 4)
 // "segment 1 overlaps". This pad shifts the boundary.
 __attribute__((used)) static const unsigned char segment_pad[10240] = { 1 };
 
+
+// ---------------------------------------------------------------------------
+// Cockpit frame (app0:cockpit_slim.png, GAME_W x GAME_H RGBA), drawn over the
+// finished frame while the first-person view is on. Uses vitaGL's fixed
+// function path (program 0, client arrays) and puts back the state the game
+// relies on.
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#include <stb/stb_image.h>
+
+void gl_draw_cockpit(void) {
+    static GLuint tex = 0;
+    static int failed = 0;
+    if (!tex) {
+        if (failed) return;
+        int w, h, n;
+        unsigned char *px = stbi_load("app0:cockpit_slim.png", &w, &h, &n, 4);
+        if (!px) { failed = 1; log_info("cockpit: app0:cockpit_slim.png not loaded"); return; }
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        stbi_image_free(px);
+        logv_info("cockpit: frame %dx%d loaded", w, h);
+    }
+    GLint prog = 0, abuf = 0, ebuf = 0, vp[4], btex = 0, atex = 0, fb = 0;
+    GLint bsrc = 0, bdst = 0, bsrca = 0, bdsta = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &abuf);
+    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &ebuf);
+    glGetIntegerv(GL_VIEWPORT, vp);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &atex);
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fb);
+    glGetIntegerv(GL_BLEND_SRC_RGB, &bsrc); glGetIntegerv(GL_BLEND_DST_RGB, &bdst);
+    glGetIntegerv(GL_BLEND_SRC_ALPHA, &bsrca); glGetIntegerv(GL_BLEND_DST_ALPHA, &bdsta);
+    GLboolean blend = glIsEnabled(GL_BLEND), depth = glIsEnabled(GL_DEPTH_TEST),
+              cull = glIsEnabled(GL_CULL_FACE), scis = glIsEnabled(GL_SCISSOR_TEST);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &btex);
+
+    if ((GLuint)fb != game_fb) glBindFramebuffer(GL_FRAMEBUFFER, game_fb);
+    glUseProgram(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glDisable(GL_DEPTH_TEST); glDisable(GL_CULL_FACE); glDisable(GL_SCISSOR_TEST);
+    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    if (game_fb) glViewport(0, 0, GAME_W, GAME_H); else glViewport(0, 0, DISPLAY_W, DISPLAY_H);
+    glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrthof(0, 1, 1, 0, -1, 1);
+    glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    static const float v[8] = { 0, 0, 1, 0, 0, 1, 1, 1 };
+    static const float t[8] = { 0, 0, 1, 0, 0, 1, 1, 1 };
+    glColor4f(1, 1, 1, 1);
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+    glVertexPointer(2, GL_FLOAT, 0, v);
+    glTexCoordPointer(2, GL_FLOAT, 0, t);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glDisableClientState(GL_VERTEX_ARRAY);
+    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+    glDisable(GL_TEXTURE_2D);
+
+    glBindTexture(GL_TEXTURE_2D, btex);
+    glActiveTexture(atex);
+    glBlendFuncSeparate(bsrc, bdst, bsrca, bdsta);
+    if (!blend) glDisable(GL_BLEND);
+    if (depth) glEnable(GL_DEPTH_TEST);
+    if (cull) glEnable(GL_CULL_FACE);
+    if (scis) glEnable(GL_SCISSOR_TEST);
+    glViewport(vp[0], vp[1], vp[2], vp[3]);
+    glBindBuffer(GL_ARRAY_BUFFER, abuf);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebuf);
+    glUseProgram(prog);
+    if ((GLuint)fb != game_fb) glBindFramebuffer(GL_FRAMEBUFFER, fb);
+}

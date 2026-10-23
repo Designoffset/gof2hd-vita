@@ -226,6 +226,13 @@ static float rstick(unsigned char v) {
     return a;
 }
 
+// First-person view on, in flight, no menu or cutscene: draw the cockpit.
+int controls_cockpit_active(void) {
+    if (!controls_in_space()) return 0;
+    void *g = current_game();
+    return g && MG_I(g, 0x14) == 2 && !MG_B(g, 0x5d) && !MG_B(g, 0x5f) && !MG_B(g, 0x60);
+}
+
 void controls_flight_tick(int flight, unsigned int pressed, SceCtrlData *pad) {
     static int was_flight = 0, last_cam = -1, settle = 0;
     void *g = flight ? current_game() : NULL;
@@ -242,6 +249,12 @@ void controls_flight_tick(int flight, unsigned int pressed, SceCtrlData *pad) {
         log_info("controls: steering was set to tilt, switched to the analog stick");
     }
     int cam = MG_I(g, 0x14);
+    // In the first-person view the cockpit frame replaces the ship, so keep
+    // the ship hidden the whole time (the game only hides it part of the time).
+    if (cam == 2) {
+        void *tfc = *(void **)((uintptr_t)g + 0xf4);
+        if (tfc) *(unsigned char *)((uintptr_t)tfc + 0x100) = 1;
+    }
     // Leaving the first-person view can leave the camera's "hide the ship"
     // flag set, so the ship stays invisible in the other views.
     if (cam != 2) {

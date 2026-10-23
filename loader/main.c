@@ -643,6 +643,9 @@ static void handle_controls(int screen_touched) {
 void gl_draw_cursor(int x, int y, int pressed);
 
 static void draw_controls_overlay(void) {
+    extern int controls_cockpit_active(void);
+    extern void gl_draw_cockpit(void);
+    if (controls_cockpit_active()) gl_draw_cockpit();
     if (prev_mode == 0 && cursor_shown)
         gl_draw_cursor((int)cursor_x, (int)cursor_y, cursor_down);
 }
