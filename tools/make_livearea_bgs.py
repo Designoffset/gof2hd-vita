@@ -7,7 +7,8 @@ src_dir = sys.argv[1]
 srcs = [("d8724e3f-image.webp", 1, 0.5), ("670cc179-image.webp", 0.5, 0), ("ba7805a0-image.png", 0.3, 0.5),
         ("d3a1ffef-image.webp", 0.5, 0.5), ("952f315b-image.jpg", 0.5, 0.5), ("6ffda733-image.jpg", 0.5, 0.5),
         ("01eaebe1-image.jpg", 0, 0.5), ("84519bf3-image.webp", 1, 0.5), ("19c33e0c-image.jpg", 0.5, 0.5),
-        ("960d01d5-image.jpg", 1, 0.5), ("060647a3-image.jpg", 1, 0.5)]
+        ("960d01d5-image.jpg", 1, 0.5), ("060647a3-image.jpg", 1, 0.5),
+        ("ae67f5a0-image.png", 0, 0.5), ("502a2e6e-image.png", 0.5, 0.5)]
 W, H = 840, 500
 for i, (f, ax, ay) in enumerate(srcs, 1):
     im = Image.open(f"{src_dir}/{f}").convert("RGB")

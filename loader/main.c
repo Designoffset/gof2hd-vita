@@ -112,7 +112,7 @@ static void *sym(const char *name) {
  * one of the backgrounds shipped in app0:livearea/bg/ over it (never the same
  * one twice in a row), so the next visit to the LiveArea shows another scene.
  */
-#define LA_COUNT 11
+#define LA_COUNT 13
 static void livearea_rotate(void) {
     int last = -1;
     SceUID fd = sceIoOpen(DATA_PATH "livearea_last", SCE_O_RDONLY, 0);
