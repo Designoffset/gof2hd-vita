@@ -217,6 +217,22 @@ static void first_person(void *g, int on) {
 }
 
 static float *(*Geo_getMatrix)(void *geo);
+static float (*Ship_getHandling)(void *ship);
+static void *(*Status_getShip)(void *status);
+static void **Globals__status;
+
+static float ship_handling(void) {
+    if (!Ship_getHandling || !Status_getShip || !Globals__status || !*Globals__status) return 1.f;
+    void *ship = Status_getShip(*Globals__status);
+    if (!ship) return 1.f;
+    float h = Ship_getHandling(ship);
+    if (h > 5.f) h /= 100.f;                 // in case the stat is stored as shown in the shop
+    if (h < 0.4f) h = 0.4f;
+    if (h > 1.7f) h = 1.7f;
+    static float logged = -1.f;
+    if (h != logged) { logged = h; logv_info("controls: ship handling %.2f -> roll %.0f deg/s", h, h * 2.4f * 57.3f); }
+    return h;
+}
 
 static float rstick(unsigned char v) {
     float a = ((float)v - 128.f) / 127.f;
@@ -289,7 +305,11 @@ void controls_flight_tick(int flight, unsigned int pressed, SceCtrlData *pad) {
             void *geo = *(void **)((uintptr_t)ego + 8);
             float *m = geo ? Geo_getMatrix(geo) : NULL;
             if (m) {
-                float a = rx * 2.4f / 60.f;            // up to ~140 degrees a second
+                // Roll rate follows the ship's handling stat (Ship::getHandling,
+                // about 0.3 for the heaviest freighters to 1.6 for the nimblest
+                // fighters, +0.2 per steering mod): ~140 degrees a second at 1.0.
+                float hnd = ship_handling();
+                float a = rx * 2.4f * hnd / 60.f;
                 float c = cosf(a), sn = sinf(a);
                 for (int r = 0; r < 3; r++) {
                     float R = m[r * 4 + 0], U = m[r * 4 + 1];
@@ -474,6 +494,9 @@ void patch__controls_fix() {
     Ev_stop = (void *) so_symbol(&so_fmodevent, "_ZN4FMOD5Event4stopEb");
     Ev_getState = (void *) so_symbol(&so_fmodevent, "_ZN4FMOD5Event8getStateEPj");
     Ev_getCategory = (void *) so_symbol(&so_fmodevent, "_ZN4FMOD5Event11getCategoryEPPNS_13EventCategoryE");
+    Ship_getHandling = (void *) so_symbol(&so_mod, "_ZN4Ship11getHandlingEv");
+    Status_getShip = (void *) so_symbol(&so_mod, "_ZN6Status7getShipEv");
+    Globals__status = (void **) so_symbol(&so_mod, "_ZN7Globals6statusE");
     Geo_getMatrix = (void *) so_symbol(&so_mod, "_ZN10AEGeometry9getMatrixEv");
     Cam_enableFirstPerson = (void *) so_symbol(&so_mod, "_ZN18TargetFollowCamera20enableFirstPersonCamEb");
     Cam_setRotationAroundTarget = (void *) so_symbol(&so_mod, "_ZN18TargetFollowCamera23setRotationAroundTargetEb");
