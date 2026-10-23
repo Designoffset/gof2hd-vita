@@ -133,7 +133,37 @@ bool has_patched_file(char *fname, char ** file_list, int file_list_len) {
 }
 
 so_hook zip_fopen_hook;
+static zip_t **APKArchive_p, **ZIPArchive_p;
+static zip_t *zip_fopen_real(zip_t *archive, const char *fname, zip_flags_t flags);
+
+/*
+ * Memory leak fix. FileInterfaceAndroid::OpenRead and ::FileExist open every
+ * file twice: "assets/<name>" in APKArchive and "<content dir>/assets/<name>"
+ * in ZIPArchive (the expansion file on Android), keep the APK one when both
+ * exist and never close the other. Our single APK holds both trees, so every
+ * file read left an open zip handle behind (~17 KB each: struct, read buffer
+ * and inflate state) - about 10 MB per jump until the heap ran out. The APK
+ * lookup always comes first, so when it just succeeded, report the
+ * expansion copy as missing.
+ */
 zip_t * zip_fopen(zip_t *archive, const char *fname, zip_flags_t flags) {
+    static int apk_hit = 0;
+    zip_t *apk = APKArchive_p ? *APKArchive_p : NULL, *exp = ZIPArchive_p ? *ZIPArchive_p : NULL;
+    int is_exp = exp && archive == exp && (apk != exp || (fname && strncmp(fname, "assets/", 7) != 0));
+    if (!is_exp && apk && archive == apk) {
+        zip_t *r = zip_fopen_real(archive, fname, flags);
+        apk_hit = (r != NULL);
+        return r;
+    }
+    if (is_exp && apk_hit) {
+        apk_hit = 0;
+        return NULL;
+    }
+    apk_hit = 0;
+    return zip_fopen_real(archive, fname, flags);
+}
+
+static zip_t *zip_fopen_real(zip_t *archive, const char *fname, zip_flags_t flags) {
     if (zip_patch_user != NULL) {
         // User patch takes precedence over everything
         zip_t * ret = SO_CONTINUE(zip_t *, zip_fopen_hook, zip_patch_user, fname, flags);
@@ -189,6 +219,8 @@ void patch__apk_hook() {
     }
 
     zip_fopen_hook = hook_addr(so_symbol(&so_mod, "zip_fopen"), (uintptr_t)zip_fopen);
+    APKArchive_p = (zip_t **)so_symbol(&so_mod, "APKArchive");
+    ZIPArchive_p = (zip_t **)so_symbol(&so_mod, "ZIPArchive");
 }
 
 // ---------------------------------------------------------------------------

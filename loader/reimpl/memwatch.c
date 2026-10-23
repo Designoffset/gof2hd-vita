@@ -54,8 +54,12 @@ static void rehash(void) {
     tab_dead = 0;
 }
 
+// Per-caller tracking found the zip handle leak (apk_hook.c). It costs time
+// on every allocation (and a table rebuild now and then), so it is off by
+// default; set MEMWATCH_TRACK to 1 to use it again.
+#define MEMWATCH_TRACK 0
 static void track(void *p, size_t size, uintptr_t caller) {
-    if (!p) return;
+    if (!MEMWATCH_TRACK || !p) return;
     lock();
     if (!tab) { tab = calloc(SLOTS, sizeof(slot_t)); }
     if (tab && tab_live + tab_dead > SLOTS / 2) rehash();
@@ -68,7 +72,7 @@ static void track(void *p, size_t size, uintptr_t caller) {
     unlock();
 }
 static void untrack(void *p) {
-    if (!p || !tab) return;
+    if (!MEMWATCH_TRACK || !p || !tab) return;
     lock();
     uint32_t i = h((uintptr_t)p);
     while (tab[i].p) {
