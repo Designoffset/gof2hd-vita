@@ -265,9 +265,10 @@ void controls_flight_tick(int flight, unsigned int pressed, SceCtrlData *pad) {
         log_info("controls: steering was set to tilt, switched to the analog stick");
     }
     int cam = MG_I(g, 0x14);
-    // In the first-person view the cockpit frame replaces the ship, so keep
-    // the ship hidden the whole time (the game only hides it part of the time).
-    if (cam == 2) {
+    // With a cockpit frame the ship would stay hidden in the first-person
+    // view; without one, leave it to the game (COCKPIT_HIDE_SHIP 0).
+    #define COCKPIT_HIDE_SHIP 0
+    if (COCKPIT_HIDE_SHIP && cam == 2) {
         void *tfc = *(void **)((uintptr_t)g + 0xf4);
         if (tfc) *(unsigned char *)((uintptr_t)tfc + 0x100) = 1;
     }
@@ -324,10 +325,9 @@ void controls_flight_tick(int flight, unsigned int pressed, SceCtrlData *pad) {
         if (pressed & SCE_CTRL_LTRIGGER) roll = 1;
         if (pressed & SCE_CTRL_RTRIGGER) roll = 2;
         if (roll && Ego_initManeuver) Ego_initManeuver(ego, roll);
-        // Select: cockpit (first-person) view on / off. Shelved for now
-        // (COCKPIT_VIEW 0); the code stays for when it is picked up again.
-        #define COCKPIT_VIEW 0
-        if (COCKPIT_VIEW && (pressed & SCE_CTRL_SELECT)) {
+        // Select: first-person view on / off (the cockpit frame drawn over
+        // it is shelved - see gl_draw_cockpit in main.c).
+        if (pressed & SCE_CTRL_SELECT) {
             int fp = MG_I(g, 0x14) == 2;
             logv_info("controls: first-person view %s", fp ? "off" : "on");
             first_person(g, !fp);
